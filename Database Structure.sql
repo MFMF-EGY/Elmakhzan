@@ -2,8 +2,8 @@ create database Elfarid_Metal CHARACTER SET utf8 COLLATE utf8_general_ci;
 use Elfarid_Metal;
 create table Accounts(
     Person_ID int NOT NULL AUTO_INCREMENT,
-    Name varchar(100),
-    Balance float,
+    Person_Name varchar(100) UNIQUE,
+    Debt_Balance float(20,2),
     PRIMARY KEY (Person_ID)
 );
 
@@ -15,8 +15,16 @@ create table Products_Table(
     Purchase_Price int,
     Wholesale_Price int,
     Retail_Price int,
+    Partial_Quantity_Precision int,
     PRIMARY KEY (Product_ID)
 );
+
+create table Product_Quantity_Table(
+    Store_ID int,
+    Product_ID int,
+    Quantity float
+);
+
 create table Stores_Table(
     Store_ID int NOT NULL AUTO_INCREMENT,
     Store_Name varchar(50) UNIQUE,
@@ -26,7 +34,6 @@ create table Stores_Table(
 create table Selling_Invoices(
     Invoice_ID int NOT NULL AUTO_INCREMENT,
     Store_ID int,
-    Client_Name varchar(50),
     Client_ID int,
     DateTime datetime default CURRENT_TIMESTAMP,
     Total_Price int,
@@ -41,7 +48,6 @@ create table Selling_Operations(
 create table Refund_Invoices(
     Invoice_ID int NOT NULL AUTO_INCREMENT,
     Store_ID int,
-    Client_Name varchar(50),
     Client_ID int,
     DateTime datetime default CURRENT_TIMESTAMP,
     Total_Price int,
@@ -57,7 +63,6 @@ create table Refund_Operations(
 create table Purchase_Invoices(
     Invoice_ID int NOT NULL AUTO_INCREMENT,
     Store_ID int,
-    Seller_Name varchar(50),
     Seller_ID int,
     DateTime datetime default CURRENT_TIMESTAMP,
     Total_Price int,
@@ -87,10 +92,10 @@ create table Accounts_Operations(
     Process_ID int NOT NULL AUTO_INCREMENT,
     Person_ID int NOT NULL,
     Description TINYTEXT,
-    Required int,
-    Paid int,
-    Added_To_Account int,
-    Balance int,
+    Required_Amount float,
+    Paid float,
+    Added_To_Account float,
+    Debt_Balance float,
     PRIMARY KEY (Process_ID)
 )
 # drop database Elfarid_Metal
