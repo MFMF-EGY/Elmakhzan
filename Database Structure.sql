@@ -1,9 +1,9 @@
 create database Elfarid_Metal CHARACTER SET utf8 COLLATE utf8_general_ci;
 use Elfarid_Metal;
-create table Accounts(
+create table Debt_Accounts(
     Person_ID int NOT NULL AUTO_INCREMENT,
     Person_Name varchar(100) UNIQUE,
-    Debt_Balance float(20,2),
+    Debt_Balance float(20,2) default 0,
     PRIMARY KEY (Person_ID)
 );
 
@@ -37,9 +37,11 @@ create table Selling_Invoices(
     Client_ID int,
     DateTime datetime default CURRENT_TIMESTAMP,
     Total_Price int,
+    Paid int,
+    Transferred_To_Account int,
     PRIMARY KEY (Invoice_ID)
 );
-create table Selling_Operations(
+create table Selling_Items(
     Invoice_ID int NOT NULL,
     Product_ID int,
     Quantity int,
@@ -53,7 +55,7 @@ create table Refund_Invoices(
     Total_Price int,
     PRIMARY KEY (Invoice_ID)
 );
-create table Refund_Operations(
+create table Refund_Items(
     Invoice_ID int NOT NULL,
     Product_ID int,
     Quantity int,
@@ -70,7 +72,7 @@ create table Purchase_Invoices(
     Transferred_To_Account int,
     PRIMARY KEY (Invoice_ID)
 );
-create table Purchase_Operations(
+create table Purchase_Items(
     Invoice_ID int NOT NULL,
     Product_ID int,
     Quantity int,
@@ -83,7 +85,7 @@ create table Transition_Documents(
     Destination_Store_ID int,
     PRIMARY KEY (Document_ID)
 );
-create table Transition_Operations(
+create table Transition_Items(
     Document_ID int NOT NULL,
     Product_ID int,
     Quantity int
