@@ -3,6 +3,7 @@ import json
 import enum
 import mysql.connector
 from datetime import datetime
+from decimal import Decimal
 
 DataBaseConnector = mysql.connector.connect(
     host="localhost",
@@ -22,14 +23,17 @@ class ErrorCodes(enum.Enum):
     MissingVariables = enum.auto()
     EmptyValue = enum.auto()
     InvalidValue = enum.auto()
-    DuplicateName = enum.auto()
+    DuplicateValue = enum.auto()
     ValueNotFound = enum.auto()
-
+    InsufficientQuantity = enum.auto()
+    ExcessQuantity = enum.auto()
+    UnregisteredStore = enum.auto()
+    UnregisteredProduct = enum.auto()
+    UnregisteredPerson = enum.auto()
+    InvalidPrecision = enum.auto()
 
 class ProcessRequest:
 
-    #TODO: Sanitizing user input to prevent sql injection
-    #TODO: Defining error codes
     def CreateAccount(RequestList):
         PersonName = RequestList["PersonName"]
         Cursor.execute(f"INSERT INTO Accounts(Name) VALUES ('{PersonName}');")
@@ -37,7 +41,6 @@ class ProcessRequest:
         return (0,"OK")
 
     def AddStore(RequestList):
-        global Cursor
         StoreName = RequestList["StoreName"]
         Cursor.execute("Select Product_ID from Products_Table;\n")
         ProductsIDs = Cursor.fetchall()
@@ -48,32 +51,36 @@ class ProcessRequest:
         return (0,"OK")
 
     def AddProduct(RequestList):
+        ProductName, Trademark, ManufactureCountry, PurchasePrice, WholesalePrice, RetailPrice, PartialQuantityPrecision = (
+            RequestList["ProductName"], RequestList["Trademark"],
+            RequestList["ManufactureCountry"], RequestList["PurchasePrice"], RequestList["WholesalePrice"],
+            RequestList["RetailPrice"], RequestList["PartialQuantityPrecision"])
         #Check if Product already exist with the same trademark
-        Cursor.execute(f"SELECT * FROM Products_Table WHERE Product_Name='{RequestList['ProductName']}' AND Trademark='{RequestList['Trademark']}';")
+        Cursor.execute(f"SELECT * FROM Products_Table WHERE Product_Name='{ProductName}' AND Trademark='{Trademark}';")
         if Cursor.fetchone():
-            return (ErrorCodes.DuplicateName,"Product already exist with the same trademark")
+            return (ErrorCodes.DuplicateValue,"Product already exist with the same trademark")
         Cursor.execute(f"SELECT Store_ID from Stores_Table;")
         StoresIDs = Cursor.fetchall()
         Cursor.execute(
             f"INSERT INTO Products_Table(Product_Name,Trademark,Manufacture_Country,Purchase_Price,Wholesale_Price,"
-            f"Retail_Price) VALUES ('{RequestList['ProductName']}','{RequestList['Trademark']}','{RequestList['ManufactureCountry']}',{RequestList['PurchasePrice']},{RequestList['WholesalePrice']},"
-            f"{RequestList['RetailPrice']});")
+            f"Retail_Price,Partial_Quantity_Precision) VALUES ('{ProductName}','{Trademark}','{ManufactureCountry}',{PurchasePrice},{WholesalePrice},"
+            f"{RetailPrice},{PartialQuantityPrecision});")
         for StoreID in StoresIDs:
             Cursor.execute(f"INSERT INTO Product_Quantity_Table(Store_ID,Product_ID,Quantity) VALUES ({StoreID["Store_ID"]},LAST_INSERT_ID(),0)")
         DataBaseConnector.commit()
         return (0,"OK")
     def EditProductInfo(RequestList):
-        ProductID, ProductName, Trademark, ManufactureCountry, PurchasePrice, WholesalePrice, RetailPrice = (
+        ProductID, ProductName, Trademark, ManufactureCountry, PurchasePrice, WholesalePrice, RetailPrice, PartialQuantityPrecision = (
             RequestList["ProductID"], RequestList["ProductName"], RequestList["Trademark"],
             RequestList["ManufactureCountry"], RequestList["PurchasePrice"], RequestList["WholesalePrice"],
-            RequestList["RetailPrice"])
+            RequestList["RetailPrice"], RequestList["PartialQuantityPrecision"])
         Cursor.execute(f"SELECT * FROM Products_Table WHERE Product_ID={ProductID};")
         if Cursor.fetchone() is None:
             return (ErrorCodes.ValueNotFound,f"There is no product with id {ProductID}")
         Cursor.execute(
             f"UPDATE Products_Table SET Product_Name = '{ProductName}', Trademark = '{Trademark}', "
             f"Manufacture_Country = '{ManufactureCountry}', Purchase_Price={PurchasePrice}, Wholesale_Price="
-            f"{WholesalePrice}, Retail_Price={RetailPrice} WHERE Product_ID={ProductID} ")
+            f"{WholesalePrice}, Retail_Price={RetailPrice}, Partial_Quantity_Precision={PartialQuantityPrecision} WHERE Product_ID={ProductID} ")
         DataBaseConnector.commit()
         return (0,"OK")
     def GetProductInfo(RequestList):
@@ -85,115 +92,229 @@ class ProcessRequest:
         Cursor.execute("SELECT Store_ID,Quantity FROM Product_Quantity_Table;")
         ProductQuantities = Cursor.fetchall()
         ProductInfo["Product_Quantity_Table"] = ProductQuantities
-        return ProductInfo
+        return (0,ProductInfo)
     def Sell(RequestList):
-            ClientID = RequestList["ClientID"]
-            Orders = RequestList["Orders"]
-            TotalPrice = 0
-            for Order in Orders:
-                Cursor.execute(f"SELECT Quantity_Store{StoreID} FROM Products_Table WHERE Product_ID={Order['ProductID']}")
-                ExistingQuantity = Cursor.fetchall()[0][0]
-                if ExistingQuantity < Order["Quantity"]:
-                    pass
-                TotalPrice += Order["Price"]
-                GeneratedSql += (f"INSERT INTO Selling_Operations(Invoice_ID,Product_ID,Quantity,Selling_Price) VALUES "
-                                 f"(@Invoice_ID,'{Order["ProductID"]}','{Order["Quantity"]}',"
-                                 f"'{Order["Price"]}');\n")
-            GeneratedSql = "SET @Invoice_ID = LAST_INSERT_ID();\n" + GeneratedSql
-            GeneratedSql = f"INSERT INTO Selling_Invoices(Store_Id,Client_ID,Total_Price) VALUES ('{StoreID}','{ClientID}','{TotalPrice}');\n" + GeneratedSql
-            if RequestList["Paid"]>TotalPrice:
-                return "ER"
-            elif RequestList["Paid"]<TotalPrice:
-                Amount = TotalPrice - RequestList["Paid"]
-                GeneratedSql += ProcessRequest('{"RequestType":"AddToAccount","PersonID":"%s","Description":"CONCAT(\'فاتورة بيع #S-\',@Invoice_ID)","Amount":"%s"}' % (ClientID, Amount))
+        StoreID = RequestList["StoreID"]
+        ClientID = RequestList["ClientID"]
+        Orders = RequestList["Orders"]
+        Paid = RequestList["Paid"]
+        TotalPrice = Decimal()
+        DuplicationChecker = {}
+        if not Cursor.fetchone():
+            return (ErrorCodes.UnregisteredPerson,f"Client {ClientID} is not registered")
+        # For every ordered product check if product exist, has sufficient quantity, and inserted once
+        for Order in Orders:
+            Cursor.execute(f"SELECT Quantity FROM Product_Quantity_Table WHERE Product_ID={Order['ProductID']} AND Store_ID={StoreID}")
+            ExistingQuantity = Cursor.fetchone()
+            if ExistingQuantity is None:
+                return (ErrorCodes.InvalidValue,f"Product {Order['ProductID']} does not exist")
+            elif ExistingQuantity["Quantity"] < Order["Quantity"]:
+                return (ErrorCodes.InsufficientQuantity,f"Insufficient quantity of product {Order['ProductID']}")
+            if Order["ProductID"] in DuplicationChecker:
+                return (ErrorCodes.DuplicateValue,f"Product {Order['ProductID']} is inserted more than once")
+            else:
+                DuplicationChecker[Order["ProductID"]] = 0
+            TotalPrice += Order["Price"]
+        if RequestList["Paid"]>TotalPrice:
+            return (ErrorCodes.ExcessQuantity,"Paid amount is more than invoice total price")
+        # TODO: Automatically add the remain to debt account if paid amount is less than total price
+        #elif RequestList["Paid"]<TotalPrice:
+        #    Amount = TotalPrice - RequestList["Paid"]
+        #    ProcessRequest('{"RequestType":"AddToAccount","PersonID":"%s","Description":"CONCAT(\'فاتورة بيع #S-\',@Invoice_ID)","Amount":"%s"}' % (ClientID, Amount))
+
+        Cursor.execute(f"INSERT INTO Selling_Invoices(Store_Id,Client_ID,Total_Price,Paid,Transferred_To_Account) "
+                       f"VALUES ('{StoreID}','{ClientID}','{TotalPrice}','{Paid}',{TotalPrice-Paid});")
+        Cursor.execute("SET @Invoice_ID = LAST_INSERT_ID();")
+        for Order in Orders:
+            Cursor.execute(f"INSERT INTO Selling_Items VALUES (@Invoice_ID,'{Order["ProductID"]}','{Order["Quantity"]}','{Order["Price"]}');\n")
+            Cursor.execute(f"UPDATE Product_Quantity_Table SET Quantity = Quantity - {Order['Quantity']} WHERE "
+                           f"Store_ID = {StoreID} AND Product_ID = {Order['ProductID']}")
+        DataBaseConnector.commit()
+        return (0,"OK")
     def Purchase(RequestList):
-            SellerID = RequestList["SellerID"]
-            Orders = RequestList["Orders"]
-            TotalPrice = 0
-            for Order in Orders:
-                TotalPrice += Order["Price"]
-                GeneratedSql += (f"INSERT INTO Purchase_Operations(Invoice_ID,Product_ID,Quantity,Purchase_Price) "
-                                 f"VALUES (@Invoice_ID,'{Order["ProductID"]}','{Order["Quantity"]}',"
-                                 f"'{Order["Price"]}');\n")
-            GeneratedSql = "SET @Invoice_ID = LAST_INSERT_ID();\n" + GeneratedSql
-            GeneratedSql = f"INSERT INTO Purchase_Invoices(Store_Id,Seller_ID,Total_Price) VALUES ('{StoreID}','{SellerID}','{TotalPrice}');\n" + GeneratedSql
-            if RequestList["Paid"]<TotalPrice:
-                Amount = TotalPrice - RequestList["Paid"]
-                GeneratedSql+=ProcessRequest(f'{"RequestType":"DeductFromAccount","PersonID":{SellerID},"Description":"CONCAT(\'فاتورة شراء #P-\',@Invoice_ID)","Amount":{Amount}}')
+        StoreID = RequestList["StoreID"]
+        SellerID = RequestList["SellerID"]
+        Orders = RequestList["Orders"]
+        Paid = RequestList["Paid"]
+        TotalPrice = Decimal()
+        DuplicationChecker = {}
+        Cursor.execute(f"SELECT Person_ID FROM Debt_Accounts WHERE Person_ID = {SellerID}")
+        if not Cursor.fetchone():
+            return (ErrorCodes.UnregisteredPerson,f"Seller {SellerID} is not registered")
+        # For every ordered product check if product exist, and inserted once
+        for Order in Orders:
+            Cursor.execute(f"SELECT Quantity FROM Product_Quantity_Table WHERE Product_ID={Order['ProductID']} AND Store_ID={StoreID}")
+            ExistingQuantity = Cursor.fetchone()
+            if ExistingQuantity is None:
+                return (ErrorCodes.InvalidValue,f"Product {Order['ProductID']} does not exist")
+            if Order["ProductID"] in DuplicationChecker:
+                return (ErrorCodes.DuplicateValue,f"Product {Order['ProductID']} is inserted more than once")
+            else:
+                DuplicationChecker[Order["ProductID"]] = 0
+            TotalPrice += Order["Price"]
+        if RequestList["Paid"]>TotalPrice:
+            return (ErrorCodes.ExcessQuantity,"Paid amount is more than invoice total price")
+        # TODO: Automatically subtract the remain from debt account if paid amount is less than total price
+        #elif RequestList["Paid"]<TotalPrice:
+        #    Amount = TotalPrice - RequestList["Paid"]
+        #    ProcessRequest('{"RequestType":"AddToAccount","PersonID":"%s","Description":"CONCAT(\'فاتورة بيع #S-\',@Invoice_ID)","Amount":"%s"}' % (ClientID, Amount))
+        Cursor.execute(f"INSERT INTO Purchase_Invoices(Store_Id,Seller_ID,Total_Price,Paid,Subtracted_From_Account) VALUES ('{StoreID}','{SellerID}','{TotalPrice}',{Paid},{TotalPrice-Paid});")
+        Cursor.execute("SET @Invoice_ID = LAST_INSERT_ID();")
+        for Order in Orders:
+            Cursor.execute(
+                f"INSERT INTO Purchase_Items VALUES (@Invoice_ID,'{Order["ProductID"]}','{Order["Quantity"]}','{Order["Price"]}');\n")
+            Cursor.execute(f"UPDATE Product_Quantity_Table SET Quantity = Quantity + {Order['Quantity']} WHERE "
+                           f"Store_ID = {StoreID} AND Product_ID = {Order['ProductID']}")
+        DataBaseConnector.commit()
+        return (0,"OK")
     def Refund(RequestList):
-            ClientID = RequestList["ClientID"]
-            Orders = RequestList["Orders"]
-            TotalPrice = 0
-            for Order in Orders:
-                TotalPrice += Order["Price"]
-                GeneratedSql += (f"INSERT INTO Refund_Operations(Invoice_ID,Product_ID,Quantity,Refund_Price) VALUES ("
-                                 f"LAST_INSERT_ID(),'{Order["ProductID"]}','{Order["Quantity"]}','{Order["Price"]}');\n")
-            GeneratedSql += f"INSERT INTO Refund_Invoices(Store_Id,Client_ID,Total_Price) VALUES ('{StoreID}','{ClientID}','{TotalPrice}');\n"
-
+        StoreID = RequestList["StoreID"]
+        ClientID = RequestList["ClientID"]
+        Orders = RequestList["Orders"]
+        TotalPrice = Decimal()
+        DuplicationChecker = {}
+        Cursor.execute(f"SELECT Person_ID FROM Debt_Accounts WHERE Person_ID = {ClientID}")
+        if not Cursor.fetchone():
+            return (ErrorCodes.UnregisteredPerson, f"Seller {ClientID} is not registered")
+        # For every ordered product check if product exist, and inserted once
+        for Order in Orders:
+            Cursor.execute(
+                f"SELECT Quantity FROM Product_Quantity_Table WHERE Product_ID={Order['ProductID']} AND Store_ID={StoreID}")
+            ExistingQuantity = Cursor.fetchone()
+            if ExistingQuantity is None:
+                return (ErrorCodes.InvalidValue, f"Product {Order['ProductID']} does not exist")
+            if Order["ProductID"] in DuplicationChecker:
+                return (ErrorCodes.DuplicateValue, f"Product {Order['ProductID']} is inserted more than once")
+            else:
+                DuplicationChecker[Order["ProductID"]] = 0
+            TotalPrice += Order["Price"]
+        Cursor.execute(
+            f"INSERT INTO Refund_Invoices VALUES ('{StoreID}','{ClientID}','{TotalPrice}');")
+        Cursor.execute("SET @Invoice_ID = LAST_INSERT_ID();")
+        for Order in Orders:
+            Cursor.execute(f"INSERT INTO Refund_Items VALUES (@Invoice_ID,'{Order["ProductID"]}','{Order["Quantity"]}','{Order["Price"]}');\n")
+            Cursor.execute(f"UPDATE Product_Quantity_Table SET Quantity = Quantity + {Order['Quantity']} WHERE "
+                           f"Store_ID = {StoreID} AND Product_ID = {Order['ProductID']}")
+        DataBaseConnector.commit()
+        return (0, "OK")
     def AddToAccount(RequestList):
-            PersonID = RequestList["PersonID"]
-            Description = RequestList["Description"]
-            Amount = RequestList["Amount"]
-            #Description variable is left without quotes to enable using sql statement
-            GeneratedSql = f"INSERT INTO Accounts_Operations('Person_ID','Description','Required') VALUES ({PersonID},{Description},{Amount})\n"
-            GeneratedSql += f"SET @Old_Balance = (SELECT Balance FROM Accounts WHERE Person_ID = {PersonID});\n"
-            GeneratedSql += f"UPDATE Accounts SET Balance = @Old_Balance+{Amount} WHERE Person_ID = {PersonID};\n"
+        PersonID = RequestList["PersonID"]
+        Description = RequestList["Description"]
+        Amount = RequestList["Amount"]
+        Cursor.execute(f"SELECT Person_ID FROM Debt_Accounts WHERE Person_ID = {PersonID}")
+        if not Cursor.fetchone():
+            return (ErrorCodes.UnregisteredPerson, f"Person {PersonID} is not registered")
+        Cursor.execute(f"INSERT INTO Accounts_Operations('Person_ID','Description','Required') VALUES ('{PersonID}','{Description}','{Amount}')\n")
+        Cursor.execute(f"SET @Old_Balance = (SELECT Balance FROM Accounts WHERE Person_ID = {PersonID});\n")
+        Cursor.execute(f"UPDATE Accounts SET Balance = @Old_Balance+{Amount} WHERE Person_ID = {PersonID};\n")
+        DataBaseConnector.commit()
+        return (0,"OK")
     def DeductFromAccount(RequestList):
-            PersonName = RequestList["PersonName"]
-            Description = RequestList["Description"]
-            Amount = RequestList["Amount"]
-            GeneratedSql = f"SET @PersonID = (SELECT Person_ID FROM Accounts WHERE Person_Name = '{PersonName}')"
-            # Description variable is left without quotes to enable using sql statement
-            GeneratedSql += f"INSERT INTO Accounts_Operations('Person_ID','Operation_Description','Amount') VALUES (@PersonID,{Description},{Amount})\n"
-            GeneratedSql += f"SET @Old_Balance = (SELECT Balance FROM Accounts WHERE Person_ID = @PersonID);\n"
-            GeneratedSql += f"UPDATE Accounts SET Balance = @Old_Balance-{Amount} WHERE Person_ID = @PersonID;\n"
-
+        PersonID = RequestList["PersonID"]
+        Description = RequestList["Description"]
+        Amount = RequestList["Amount"]
+        Cursor.execute(f"SELECT Person_ID FROM Debt_Accounts WHERE Person_ID = {PersonID}")
+        if not Cursor.fetchone():
+            return (ErrorCodes.UnregisteredPerson, f"Person {PersonID} is not registered")
+        Cursor.execute(
+            f"INSERT INTO Accounts_Operations('Person_ID','Description','Required') VALUES ('{PersonID}','{Description}','{Amount}')\n")
+        Cursor.execute(f"SET @Old_Balance = (SELECT Balance FROM Accounts WHERE Person_ID = {PersonID});\n")
+        Cursor.execute(f"UPDATE Accounts SET Balance = @Old_Balance-{Amount} WHERE Person_ID = {PersonID};\n")
+        DataBaseConnector.commit()
+        return (0, "OK")
     def Transit(RequestList):
-            GeneratedSql = f"INSERT INTO Transition_Documents(Source_Store_ID,Destination_Store_ID) VALUES ('{RequestList['SourceStoreID']}','{RequestList['DestinationStoreID']}');\n"
-            Products = RequestList["Products"]
-            for Product in Products:
-                GeneratedSql += (f"INSERT INTO Transition_Operations(Document_ID,Product_ID,Quantity) VALUES ("
-                                 f"LAST_INSERT_ID(),'{Product['ProductID']}','{Product['Quantity']}');\n")
-    def GetHistory(RequestList):
-            Tables = RequestList["Tables"]
-            Timelapse = RequestList["Timelapse"]
-            DateTables = ["Purchase_Invoices","Selling_Invoices","Refund_Invoices","Transition_Documents"]
-            for Table in Tables:
-                if Table not in DateTables:
-                    return "ER"
-                GeneratedSql += f"SELECT * FROM {Table} WHERE Store_ID={StoreID} AND DateTime BETWEEN '{Timelapse[0]}' AND '{Timelapse[1]}';\n"
-            Cursor.execute(GeneratedSql)
-            Response = Cursor.fetchall()
-            return Response
+        Products = RequestList["Products"]
+        SourceStoreID = RequestList["SourceStoreID"]
+        DestinationStoreID = RequestList["DestinationStoreID"]
+        for Product in Products:
+            Cursor.execute(f"SELECT Quantity FROM Products_Quantity_Table WHERE Product_ID={Product['ProductID']} AND Store_ID={SourceStoreID};")
+            ExistingQuantity = Cursor.fetchone()
+            if not ExistingQuantity:
+                return (ErrorCodes.InvalidValue,"")
+            if ExistingQuantity < Product['Quantity']:
+                return (ErrorCodes.InsufficientQuantity,Product['ProductID'])
+        Cursor.execute(f"INSERT INTO Transition_Documents(Source_Store_ID,Destination_Store_ID) VALUES ('{SourceStoreID}','{DestinationStoreID}');\n")
+
+        for Product in Products:
+            Cursor.execute(f"INSERT INTO Transition_Items(Document_ID,Product_ID,Quantity) VALUES ("
+                           f"LAST_INSERT_ID(),'{Product['ProductID']}','{Product['Quantity']}');\n")
+        return (0,"OK")
+    def SearchInvoices(RequestList):
+        InvoiceType = RequestList["InvoiceType"]
+        Filters: list[dict] = RequestList["Filters"]
+        Sql = f"SELECT * FROM {InvoiceType}_Invoices WHERE "
+        for Filter in Filters:
+            key = list(Filter.keys())[0]
+            value = Filter[key]
+            Sql += f"{key}={value}"
+        Cursor.execute(Sql)
+        Response = str(Cursor.fetchall())
+        return (0,Response)
+    def SearchTransitionDocuments(RequestList):
+        Filters: list[dict] = RequestList["Filters"]
+        Sql = f"SELECT * FROM Transition_Documents WHERE "
+        for Filter in Filters:
+            key = list(Filter.keys())[0]
+            value = Filter[key]
+            Sql += f"{key}={value}"
+        Cursor.execute(Sql)
+        Response = str(Cursor.fetchall())
+        return (0,Response)
+    def GetInvoiceItems(RequestList):
+        InvoiceType = RequestList["InvoiceType"]
+        InvoiceID = RequestList["InvoiceID"]
+        Cursor.execute(f"SELECT * FROM {InvoiceType}_Items WHERE Invoice_ID={InvoiceID};")
+        return (0,Cursor.fetchall())
+    def GetTransitionDocumentItems(RequestList):
+        DocumentID = RequestList["DocumentID"]
+        Cursor.execute(f"SELECT * FROM Transition_Items WHERE Invoice_ID={DocumentID};")
+        return (0, Cursor.fetchall())
+    def AdjustProductQuantity(RequestList):
+        StoreID, ProductID, CurrentQuantity, Notes = (
+            RequestList["StoreID"], RequestList["ProductID"], RequestList["CurrentQuantity"], RequestList["Notes"])
+        Cursor.execute(f"SELECT * FROM Stores_Table WHERE Store_ID={StoreID};")
+        if Cursor.fetchone() is None: return (ErrorCodes.UnregisteredStore,"")
+        Cursor.execute(f"SELECT * FROM Products_Table WHERE Product_ID={ProductID};")
+        if Cursor.fetchone() is None: return (ErrorCodes.UnregisteredProduct,"")
+        Cursor.execute(f"SELECT Quantity FROM Product_Quantity_Table WHERE Store_ID={StoreID} AND Product_ID={ProductID};")
+        PreviousQuantity = Cursor.fetchone()['Quantity']
+        Cursor.execute(f"INSERT INTO Products_Quantity_Adjustments(Store_ID,Product_ID,Previous_Quantity,"
+                       f"Current_Quantity,Notes) VALUES ({StoreID},{ProductID},{PreviousQuantity},{CurrentQuantity},"
+                       f"'{Notes}');")
+        Cursor.execute(f"UPDATE Product_Quantity_Table SET Quantity={CurrentQuantity} WHERE Store_ID={StoreID} AND Product_ID={ProductID};")
+        DataBaseConnector.commit()
+        return (0,"OK")
 
 class SearchFiltersValidation:
-    def SellingInvoices(self,Filter):
-        for key in Filter:
+    def SellingInvoices(Filters):
+        for Filter in Filters:
+            key = list(Filter.keys())[0]
             match key:
                 case "Invoice_ID" "Client_ID":
-                    if not isinstance(Filter[key],int): return (ErrorCodes.InvalidDataType,"")
+                    if not isinstance(Filters[key],int): return (ErrorCodes.InvalidDataType,"")
                 case "DateTime":
-                    if not isinstance(Filter[key],str): return (ErrorCodes.InvalidDataType,"")
-                    if not datetime.strptime(Filter[key],"%y-%m-%d %H-%M-%S"): return (ErrorCodes.InvalidValue,"")
+                    if not isinstance(Filters[key],str): return (ErrorCodes.InvalidDataType,"")
+                    if not datetime.strptime(Filters[key],"%y-%m-%d %H-%M-%S"): return (ErrorCodes.InvalidValue,"")
                 case "Total_Price":
-                    if not isinstance(Filter[key],int): return (ErrorCodes.InvalidDataType,"")
+                    if not isinstance(Filters[key],int): return (ErrorCodes.InvalidDataType,"")
                 case "Paid":
-                    if not isinstance(Filter[key],int): return (ErrorCodes.InvalidDataType,"")
+                    if not isinstance(Filters[key],int): return (ErrorCodes.InvalidDataType,"")
                 case "Transferred_To_Account":
-                    if not isinstance(Filter[key],int): return (ErrorCodes.InvalidDataType,"")
+                    if not isinstance(Filters[key],int): return (ErrorCodes.InvalidDataType,"")
                 case "Product_ID":
-                    if not isinstance(Filter[key],int): return (ErrorCodes.InvalidDataType,"")
+                    if not isinstance(Filters[key],int): return (ErrorCodes.InvalidDataType,"")
                 case "Product_Name":
-                    if not isinstance(Filter[key],str): return (ErrorCodes.InvalidDataType,"")
+                    if not isinstance(Filters[key],str): return (ErrorCodes.InvalidDataType,"")
                 case "Quantity":
-                    if not isinstance(Filter[key],int): return (ErrorCodes.InvalidDataType,"")
+                    if not isinstance(Filters[key],int): return (ErrorCodes.InvalidDataType,"")
                 case "Selling_Price":
-                    if not isinstance(Filter[key],int): return (ErrorCodes.InvalidDataType,"")
+                    if not isinstance(Filters[key],int): return (ErrorCodes.InvalidDataType,"")
         return 0
-    def PurchaseInvoices(self,Filter):
-        for key in Filter:
+    def PurchaseInvoices(Filters):
+        for Filter in Filters:
+            key = list(Filter.keys())[0]
             match key:
-                case "Invoice_ID" "Seller_ID":
+                case "Invoice_ID" | "Seller_ID":
                     if not isinstance(Filter[key],int): return (ErrorCodes.InvalidDataType,"")
                 case "DateTime":
                     if not isinstance(Filter[key],str): return (ErrorCodes.InvalidDataType,"")
@@ -212,11 +333,14 @@ class SearchFiltersValidation:
                     if not isinstance(Filter[key],int): return (ErrorCodes.InvalidDataType,"")
                 case "Purchase_Price":
                     if not isinstance(Filter[key],int): return (ErrorCodes.InvalidDataType,"")
+                case _:
+                    return (ErrorCodes.InvalidValue, "")
         return 0
-    def RefundInvoices(self,Filter):
-        for key in Filter:
+    def RefundInvoices(Filters):
+        for Filter in Filters:
+            key = list(Filter.keys())[0]
             match key:
-                case "Invoice_ID" "Client_ID":
+                case "Invoice_ID" | "Client_ID":
                     if not isinstance(Filter[key],int): return (ErrorCodes.InvalidDataType,"")
                 case "DateTime":
                     if not isinstance(Filter[key],str): return (ErrorCodes.InvalidDataType,"")
@@ -235,15 +359,20 @@ class SearchFiltersValidation:
                     if not isinstance(Filter[key],int): return (ErrorCodes.InvalidDataType,"")
                 case "Refund_Price":
                     if not isinstance(Filter[key],int): return (ErrorCodes.InvalidDataType,"")
+                case _:
+                    return (ErrorCodes.InvalidValue, "")
         return 0
-    def TransitionDocuments(self,Filter):
-        for key in Filter:
+    def TransitionDocuments(Filters):
+        for Filter in Filters:
+            key = list(Filter.keys())[0]
             match key:
-                case "Document_ID" "Source_Store_ID" "Destination_Store_ID" "Product_ID" "Quantity":
+                case "Document_ID" | "Source_Store_ID" | "Destination_Store_ID" | "Product_ID" | "Quantity":
                     if not isinstance(Filter[key],int): return (ErrorCodes.InvalidDataType,"")
                 case "DateTime":
                     if not isinstance(Filter[key], str): return (ErrorCodes.InvalidDataType, "")
                     if not datetime.strptime(Filter[key], "%y-%m-%d %H-%M-%S"): return (ErrorCodes.InvalidValue, "")
+                case _:
+                    return (ErrorCodes.InvalidValue,"")
         return 0
 
 ValidHistoryTables = ["Selling_Invoices","Refund_Invoices","Purchase_Invoices","Transition_Documents","Accounts_Operations"]
@@ -257,7 +386,7 @@ class CheckValidation:
         except:
             return (ErrorCodes.MissingVariables,"")
         if not isinstance(PersonName,str):return (ErrorCodes.InvalidDataType,"PersonName")
-        if PersonName.len()==0:return (ErrorCodes.EmptyValue, "PersonName")
+        if len(PersonName) == 0:return (ErrorCodes.EmptyValue, "PersonName")
         return ProcessRequest.CreateAccount(RequestList)
     def AddStore(RequestList):
         try:
@@ -269,9 +398,9 @@ class CheckValidation:
         return ProcessRequest.AddStore(RequestList)
     def AddProduct(RequestList):
         try:
-            ProductName, Trademark, ManufactureCountry, PurchasePrice, WholesalePrice, RetailPrice =(
+            ProductName, Trademark, ManufactureCountry, PurchasePrice, WholesalePrice, RetailPrice, PartialQuantityPrecision =(
                 RequestList["ProductName"], RequestList["Trademark"], RequestList["ManufactureCountry"],
-                RequestList["PurchasePrice"],RequestList["WholesalePrice"], RequestList["RetailPrice"]
+                RequestList["PurchasePrice"],RequestList["WholesalePrice"], RequestList["RetailPrice"], RequestList["PartialQuantityPrecision"]
             )
         except:
             return (ErrorCodes.MissingVariables,"")
@@ -281,19 +410,20 @@ class CheckValidation:
         if not isinstance(PurchasePrice, int):return (ErrorCodes.InvalidDataType, "Trademark")
         if not isinstance(WholesalePrice, int):return (ErrorCodes.InvalidDataType, "WholesalePrice")
         if not isinstance(RetailPrice, int):return (ErrorCodes.InvalidDataType, "RetailPrice")
-        if ProductName.len()==0: return (ErrorCodes.EmptyValue, "ProductName")
-        if Trademark.len()==0:return (ErrorCodes.EmptyValue,"Trademark")
-        if ManufactureCountry.len()==0:return (ErrorCodes.EmptyValue,"ManufactureCountry")
+        if len(ProductName)==0: return (ErrorCodes.EmptyValue, "ProductName")
+        if len(Trademark)==0:return (ErrorCodes.EmptyValue,"Trademark")
+        if len(ManufactureCountry)==0:return (ErrorCodes.EmptyValue,"ManufactureCountry")
         if PurchasePrice < 0: return (ErrorCodes.InvalidValue, "PurchasePrice")
         if WholesalePrice<0:return (ErrorCodes.InvalidValue,"WholesalePrice")
         if RetailPrice<0:return (ErrorCodes.InvalidValue,"RetailPrice")
+        if PartialQuantityPrecision < 0: return (ErrorCodes.InvalidValue,"PartialQuantityPrecision")
         return ProcessRequest.AddProduct(RequestList)
     def EditProductInfo(RequestList):
         try:
-            ProductID, ProductName, Trademark, ManufactureCountry, PurchasePrice, WholesalePrice, RetailPrice = (
+            ProductID, ProductName, Trademark, ManufactureCountry, PurchasePrice, WholesalePrice, RetailPrice, PartialQuantityPrecision = (
                 RequestList["ProductID"], RequestList["ProductName"], RequestList["Trademark"],
                 RequestList["ManufactureCountry"], RequestList["PurchasePrice"], RequestList["WholesalePrice"],
-                RequestList["RetailPrice"]
+                RequestList["RetailPrice"], RequestList["PartialQuantityPrecision"]
             )
         except:
             return (ErrorCodes.MissingVariables,"")
@@ -304,12 +434,13 @@ class CheckValidation:
         if not isinstance(PurchasePrice, int): return (ErrorCodes.InvalidDataType, "Trademark")
         if not isinstance(WholesalePrice, int): return (ErrorCodes.InvalidDataType, "WholesalePrice")
         if not isinstance(RetailPrice, int): return (ErrorCodes.InvalidDataType, "RetailPrice")
-        if ProductName.len() == 0: return (ErrorCodes.EmptyValue, "ProductName")
-        if Trademark.len() == 0: return (ErrorCodes.EmptyValue, "Trademark")
-        if ManufactureCountry.len() == 0: return (ErrorCodes.EmptyValue, "ManufactureCountry")
+        if len(ProductName) == 0: return (ErrorCodes.EmptyValue, "ProductName")
+        if len(Trademark) == 0: return (ErrorCodes.EmptyValue, "Trademark")
+        if len(ManufactureCountry) == 0: return (ErrorCodes.EmptyValue, "ManufactureCountry")
         if PurchasePrice < 0: return (ErrorCodes.InvalidValue, "PurchasePrice")
         if WholesalePrice < 0: return (ErrorCodes.InvalidValue, "WholesalePrice")
         if RetailPrice < 0: return (ErrorCodes.InvalidValue, "RetailPrice")
+        if PartialQuantityPrecision < 0: return (ErrorCodes.InvalidValue,"PartialQuantityPrecision")
         return ProcessRequest.EditProductInfo(RequestList)
     def GetProductInfo(RequestList):
         try:
@@ -321,34 +452,41 @@ class CheckValidation:
 
     def Sell(RequestList):
         try:
-            ClientID, Orders, Paid = (
-                RequestList["ClientID"], RequestList["Orders"], RequestList["Paid"])
+            StoreID, ClientID, Orders, Paid = (
+                RequestList["StoreID"], RequestList["ClientID"], RequestList["Orders"], RequestList["Paid"])
         except:
             return (ErrorCodes.MissingVariables,"")
+        if not isinstance(StoreID, int): return (ErrorCodes.InvalidValue,"StoreID")
         if not isinstance(ClientID, int): return (ErrorCodes.InvalidDataType,"ClientID")
         if not isinstance(Orders, list): return (ErrorCodes.InvalidDataType,"Orders")
-        if not isinstance(Paid, int): return (ErrorCodes.InvalidDataType,"Paid")
-        if Paid<0: return (ErrorCodes.InvalidValue,"Paid")
+        if not isinstance(Paid, float): return (ErrorCodes.InvalidDataType,"Paid")
+        if Paid < 0: return (ErrorCodes.InvalidValue,"Paid")
         for Order in Orders:
             try:
                 ProductID, Quantity, Price = Order["ProductID"], Order["Quantity"], Order["Price"]
             except:
                 return (ErrorCodes.MissingVariables,"")
             if not isinstance(ProductID, int): return (ErrorCodes.InvalidDataType,"ProductID")
-            if not isinstance(Quantity, int): return (ErrorCodes.InvalidDataType,"Quantity")
-            if not isinstance(Price, int): return (ErrorCodes.InvalidDataType,"Price")
-            if Quantity<=0: return (ErrorCodes.InvalidValue,"Quantity")
-            if Price<0: return (ErrorCodes.InvalidValue,"Price")
+            if not isinstance(Quantity, float): return (ErrorCodes.InvalidDataType,"Quantity")
+            if not isinstance(Price, float): return (ErrorCodes.InvalidDataType,"Price")
+            if Quantity <= 0: return (ErrorCodes.InvalidValue,"Quantity")
+            if Price < 0: return (ErrorCodes.InvalidValue,"Price")
+            Cursor.execute(f"SELECT Partial_Quantity_Precision FROM Products_Table WHERE Product_ID={ProductID};")
+            RequiredPrecision = Cursor.fetchone()["Partial_Quantity_Precision"]
+            QuantityPrecision = len(str(Quantity)) - str(Quantity).index(".") - 1
+            if QuantityPrecision > RequiredPrecision:
+                return (ErrorCodes.InvalidPrecision, Order, RequiredPrecision)
         return ProcessRequest.Sell(RequestList)
     def Purchase(RequestList):
         try:
-            SellerID, Orders, Paid = (
-                RequestList["SellerID"], RequestList["Orders"], RequestList["Paid"])
+            StoreID, SellerID, Orders, Paid = (
+                RequestList["StoreID"], RequestList["SellerID"], RequestList["Orders"], RequestList["Paid"])
         except:
             return (ErrorCodes.MissingVariables, "")
+        if not isinstance(StoreID, int): return (ErrorCodes.InvalidDataType, "StoreID")
         if not isinstance(SellerID, int): return (ErrorCodes.InvalidDataType, "ClientID")
         if not isinstance(Orders, list): return (ErrorCodes.InvalidDataType, "Orders")
-        if not isinstance(Paid, int): return (ErrorCodes.InvalidDataType, "Paid")
+        if not isinstance(Paid, float): return (ErrorCodes.InvalidDataType, "Paid")
         if Paid < 0: return (ErrorCodes.InvalidValue, "Paid")
         for Order in Orders:
             try:
@@ -356,28 +494,39 @@ class CheckValidation:
             except:
                 return (ErrorCodes.MissingVariables, "")
             if not isinstance(ProductID, int): return (ErrorCodes.InvalidDataType, "ProductID")
-            if not isinstance(Quantity, int): return (ErrorCodes.InvalidDataType, "Quantity")
-            if not isinstance(Price, int): return (ErrorCodes.InvalidDataType, "Price")
+            if not isinstance(Quantity, float): return (ErrorCodes.InvalidDataType, "Quantity")
+            if not isinstance(Price, float): return (ErrorCodes.InvalidDataType, "Price")
             if Quantity <= 0: return (ErrorCodes.InvalidValue, "Quantity")
             if Price < 0: return (ErrorCodes.InvalidValue, "Price")
+            Cursor.execute(f"SELECT Partial_Quantity_Precision FROM Products_Table WHERE Product_ID={ProductID};")
+            RequiredPrecision = Cursor.fetchone()["Partial_Quantity_Precision"]
+            QuantityPrecision = len(str(Quantity)) - str(Quantity).index(".") - 1
+            if QuantityPrecision > RequiredPrecision:
+                return (ErrorCodes.InvalidPrecision, Order, RequiredPrecision)
         return ProcessRequest.Purchase(RequestList)
     def Refund(RequestList):
         try:
-            ClientID , Orders = RequestList["ClientID"], RequestList["Orders"]
+            StoreID, ClientID , Orders = RequestList["StoreID"], RequestList["ClientID"], RequestList["Orders"]
         except:
             return (ErrorCodes.MissingVariables,"")
-        if not isinstance(ClientID,int): return (ErrorCodes.InvalidDataType,"")
-        if not isinstance(Orders,list): return (ErrorCodes.InvalidDataType,"")
+        if not isinstance(StoreID, int): return (ErrorCodes.InvalidDataType, "StoreID")
+        if not isinstance(ClientID,int): return (ErrorCodes.InvalidDataType,"ClientID")
+        if not isinstance(Orders,list): return (ErrorCodes.InvalidDataType,"Orders")
         for Order in Orders:
             try:
                 ProductID, Quantity, Price = Order["ProductID"], Order["Quantity"], Order["Price"]
             except:
                 return (ErrorCodes.MissingVariables,"")
             if not isinstance(ProductID,int): return (ErrorCodes.InvalidDataType,"")
-            if not isinstance(Quantity,int): return (ErrorCodes.InvalidDataType,"")
-            if not isinstance(Price,int): return (ErrorCodes.InvalidDataType,"")
+            if not isinstance(Quantity,float): return (ErrorCodes.InvalidDataType,"")
+            if not isinstance(Price,float): return (ErrorCodes.InvalidDataType,"")
             if Quantity <= 0: return (ErrorCodes.InvalidValue,"")
             if Price<0: return (ErrorCodes.InvalidValue,"")
+            Cursor.execute(f"SELECT Partial_Quantity_Precision FROM Products_Table WHERE Product_ID={ProductID};")
+            RequiredPrecision = Cursor.fetchone()["Partial_Quantity_Precision"]
+            QuantityPrecision = len(str(Quantity)) - str(Quantity).index(".") - 1
+            if QuantityPrecision > RequiredPrecision:
+                return (ErrorCodes.InvalidPrecision, Order, RequiredPrecision)
         return ProcessRequest.Refund(RequestList)
 
     def AddToAccount(RequestList):
@@ -387,7 +536,7 @@ class CheckValidation:
             return (ErrorCodes.MissingVariables,"")
         if not isinstance(PersonID,int): return (ErrorCodes.InvalidDataType,"")
         if not isinstance(Description,str): return (ErrorCodes.InvalidDataType,"")
-        if not (isinstance(Amount,float) or isinstance(Amount,int)): return (ErrorCodes.InvalidDataType,"")
+        if not isinstance(Amount,float): return (ErrorCodes.InvalidDataType,"")
         if PersonID<0: return (ErrorCodes.InvalidValue,"")
         if len(Description)==0: return (ErrorCodes.InvalidValue,"")
         if Amount<=0: return (ErrorCodes.InvalidValue,"")
@@ -399,9 +548,9 @@ class CheckValidation:
             return (ErrorCodes.MissingVariables,"")
         if not isinstance(PersonID,int): return (ErrorCodes.InvalidDataType,"")
         if not isinstance(Description,str): return (ErrorCodes.InvalidDataType,"")
-        if not (isinstance(Amount,float) or isinstance(Amount,int)): return (ErrorCodes.InvalidDataType,"")
+        if not isinstance(Amount,float): return (ErrorCodes.InvalidDataType,"")
         if len(Description)==0: return (ErrorCodes.InvalidValue,"")
-        if Amount<=0: return (ErrorCodes.InvalidValue,"")
+        if Amount <= 0: return (ErrorCodes.InvalidValue,"")
         return ProcessRequest.DeductFromAccount(RequestList)
     def Transit(RequestList):
         try:
@@ -421,42 +570,43 @@ class CheckValidation:
                 return (ErrorCodes.MissingVariables,"")
             if not isinstance(ProductID,int): return (ErrorCodes.InvalidDataType,"")
             if not (isinstance(Quantity,int) or isinstance(Quantity,float)): return (ErrorCodes.InvalidDataType,"")
-            if Quantity<=0: return (ErrorCodes.InvalidValue,"")
+            if Quantity <= 0: return (ErrorCodes.InvalidValue,"")
+            Cursor.execute(f"SELECT Partial_Quantity_Precision FROM Products_Table WHERE Product_ID={ProductID};")
+            RequiredPrecision = Cursor.fetchone()["Partial_Quantity_Precision"]
+            QuantityPrecision = len(str(Quantity)) - str(Quantity).index(".") - 1
+            if QuantityPrecision > RequiredPrecision:
+                return (ErrorCodes.InvalidPrecision, Product, RequiredPrecision)
         return ProcessRequest.Transit(RequestList)
-    def SearchInvoice(RequestList):
+    def SearchInvoices(RequestList):
         try:
-            InvoiceType, Filter = RequestList["InvoiceType"], RequestList["Filter"]
+            InvoiceType, Filters = RequestList["InvoiceType"], RequestList["Filters"]
         except:
             return (ErrorCodes.MissingVariables,"")
-        if not isinstance(InvoiceType,str): return (ErrorCodes.InvalidDataType,"")
-        if not isinstance(Filter,dict): return (ErrorCodes.InvalidDataType,"")
+        if not isinstance(InvoiceType,str): return (ErrorCodes.InvalidDataType,"InvoiceType")
+        if not isinstance(Filters,list): return (ErrorCodes.InvalidDataType,"Filters")
         match InvoiceType:
             case "Selling":
-                IsNotValidFilter = SearchFiltersValidation.SellingInvoices(Filter)
+                Error = SearchFiltersValidation.SellingInvoices(Filters)
             case "Purchase":
-                IsNotValidFilter = SearchFiltersValidation.PurchaseInvoices(Filter)
+                Error = SearchFiltersValidation.PurchaseInvoices(Filters)
             case "Refund":
-                IsNotValidFilter = SearchFiltersValidation.RefundInvoices(Filter)
+                Error = SearchFiltersValidation.RefundInvoices(Filters)
             case _:
                 return (ErrorCodes.InvalidValue,"Invalid InvoiceType")
-        if IsNotValidFilter:
-            return IsNotValidFilter
-        # TODO: Implement this task
-        #else:
-        #   ProcessRequest.SearchInvoice(RequestList)
-    def SearchTransitionDocument(RequestList):
+        if Error:
+            return Error
+        return ProcessRequest.SearchInvoices(RequestList)
+    def SearchTransitionDocuments(RequestList):
         try:
-            Filter = RequestList["Filter"]
+            Filters = RequestList["Filters"]
         except:
             return (ErrorCodes.MissingVariables,"")
-        if not isinstance(Filter, dict): return (ErrorCodes.InvalidDataType, "")
-        IsNotValidFilters = SearchFiltersValidation.TransitionDocuments(Filter)
-        if IsNotValidFilters:
-            return IsNotValidFilters
+        if not isinstance(Filters, list): return (ErrorCodes.InvalidDataType, "")
+        Error = SearchFiltersValidation.TransitionDocuments(Filters)
+        if Error:
+            return Error
         else:
-            pass
-            # TODO: Implement this task
-            # return ProcessRequest.SearchTransitionDocument(RequestList)
+            return ProcessRequest.SearchTransitionDocuments(RequestList)
     def GetInvoiceItems(RequestList):
         try:
             InvoiceType, InvoiceID = RequestList["InvoiceType"], RequestList["InvoiceID"]
@@ -465,18 +615,42 @@ class CheckValidation:
         if not isinstance(InvoiceType,str): return (ErrorCodes.InvalidDataType,"")
         if not isinstance(InvoiceID,int): return (ErrorCodes.InvalidDataType,"")
         if not InvoiceType in ValidInvoiceTypes: return (ErrorCodes.InvalidValue,"")
-        #TODO: Implement this task
-        #return ProcessRequest.GeInvoiceItems(RequestList)
-    def GetTransitionItems(RequestList):
+        return ProcessRequest.GetInvoiceItems(RequestList)
+    def GetTransitionDocumentItems(RequestList):
         try:
             DocumentID = RequestList["DocumentID"]
         except:
             return (ErrorCodes.MissingVariables,"")
         if not isinstance(DocumentID,int): return (ErrorCodes.InvalidDataType,"")
-        #TODO: Implement this task
-        #return ProcessRequest.GetTransitionItems(RequestList)
+        return ProcessRequest.GetTransitionDocumentItems(RequestList)
+    def AdjustProductQuantity(RequestList):
+        try:
+            StoreID, ProductID, CurrentQuantity, Notes = (
+                RequestList["StoreID"], RequestList["ProductID"], RequestList["CurrentQuantity"], RequestList["Notes"])
+        except:
+            return (ErrorCodes.MissingVariables,"")
+        if not isinstance(StoreID,int): return (ErrorCodes.InvalidDataType,"StoreID")
+        if not isinstance(ProductID,int): return (ErrorCodes.InvalidDataType,"ProductID")
+        if not isinstance(CurrentQuantity, float): return (ErrorCodes.InvalidDataType, "CurrentQuantity")
+        if not isinstance(Notes, str): return (ErrorCodes.InvalidDataType, "Notes")
+        Cursor.execute(f"SELECT Partial_Quantity_Precision FROM Products_Table WHERE Product_ID={ProductID};")
+        RequiredPrecision = Cursor.fetchone()["Partial_Quantity_Precision"]
+        QuantityPrecision = len(str(CurrentQuantity)) - str(CurrentQuantity).index(".") - 1
+        if QuantityPrecision > RequiredPrecision: return (ErrorCodes.InvalidPrecision,"CurrentQuantity",RequiredPrecision)
+        return ProcessRequest.AdjustProductQuantity(RequestList)
+def SanatizeRequest(RequestList):
+    if isinstance(RequestList,list):
+        for i in range(len(RequestList)):
+            RequestList[i] = SanatizeRequest(RequestList[i])
+    elif isinstance(RequestList,dict):
+        for key in RequestList.keys():
+            RequestList[key] = SanatizeRequest(RequestList[key])
+    elif isinstance(RequestList, str):
+        RequestList = RequestList.replace("'","''")
+    return RequestList
 def StartRequestProcessing(Request):
     RequestList = json.loads(Request)
+    RequestList = SanatizeRequest(RequestList)
     RequestType = RequestList["RequestType"]
     match RequestType:
         case "CreateAccount":
@@ -501,30 +675,32 @@ def StartRequestProcessing(Request):
             return CheckValidation.DeductFromAccount(RequestList)
         case "Transit":
             return CheckValidation.Transit(RequestList)
-        case "SearchInvoice":
-            return CheckValidation.SearchInvoice(RequestList)
-        case "SearchTransitionDocument":
-            return CheckValidation.SearchTransitionDocument(RequestList)
+        case "SearchInvoices":
+            return CheckValidation.SearchInvoices(RequestList)
+        case "SearchTransitionDocuments":
+            return CheckValidation.SearchTransitionDocuments(RequestList)
         case "GetInvoiceItems":
             return CheckValidation.GetInvoiceItems(RequestList)
-        case "GetTransitionItems":
-            return CheckValidation.GetInvoiceItems(RequestList)
+        case "GetTransitionDocumentItems":
+            return CheckValidation.GetTransitionDocumentItems(RequestList)
+        case "AdjustProductQuantity":
+            return CheckValidation.AdjustProductQuantity(RequestList)
 
 def main():
-
-    #r= StartRequestProcessing('{"RequestType":"AddStore","StoreName":"مخزن بلتان"}')
-    #ProcessRequest('{"RequestType":"GetHistory","Tables":["Purchase_Invoices"],"Timelapse":["2024-09-06","2024-09-05"]}')
+    #r=StartRequestProcessing('{"Re":"ghl\'","h":[1,2,3],"i":{"g":"\'"}}')
+    #r = StartRequestProcessing('{"RequestType":"SearchInvoices","InvoiceType":"Purchase","Filters":[{"Invoice_ID":1}]}')
+    #r = StartRequestProcessing('{"RequestType":"SearchTransitionDocuments","Filters":[{"Document_ID":1}]}')
     #ProcessRequest('{"RequestType":"EditProductInfo","ProductID":2,"ProductName":"Combination Wrench",'
     #               '"Trademark":"King Tools","ManufactureCountry":"China","PurchasePrice":5,"WholesalePrice":60,'
     #               '"RetailPrice":65}')
-    r= StartRequestProcessing('{"RequestType":"GetProductInfo","ProductID":12}')
-    #r=GenerateSql('{"RequestType":"AddProduct","ProductName":"Combination Wrench","Trademark":"King Tools","ManufactureCountry":"China","PurchasePrice":20,"WholesalePrice":30,"RetailPrice":35}')
-    #GenerateSql('{"RequestType":"Sell","ClientID":1,"Orders":[{"ProductID":1,"Quantity":4,"Price":9},{"ProductID":1,"Quantity":4,"Price":9}],"Paid":15}')
-    #ProcessRequest('{"RequestType":"Purchase","SellerID":5,"Orders":[{"ProductID":5,"Quantity":4,"Price":9},{"ProductID":5,"Quantity":4,"Price":9}],"Paid":5}')
+    #r= StartRequestProcessing('{"RequestType":"GetProductInfo","ProductID":12}')
+    #r=StartRequestProcessing('{"RequestType":"AddProduct","ProductName":"Combination Wrench","Trademark":"King Tools","ManufactureCountry":"China","PurchasePrice":20,"WholesalePrice":30,"RetailPrice":35,"PartialQuantityPrecision":0}')
+    #r= StartRequestProcessing('{"RequestType":"Sell","StoreID":1,"ClientID":1,"Orders":[{"ProductID":12,"Quantity":2.0,"Price":9.0}],"Paid":8}')
+    #r= StartRequestProcessing('{"RequestType":"Purchase","StoreID":1,"SellerID":1,"Orders":[{"ProductID":12,"Quantity":4,"Price":9}],"Paid":9}')
     #ProcessRequest('{"RequestType":"Refund","ClientID":5,"Orders":[{"ProductID":5,"Quantity":4,"Price":9},{"ProductID":5,"Quantity":4,"Price":9}]}')
     #ProcessRequest('{"RequestType":"Transit","SourceStoreID":0,"DestinationStoreID":1,"Products":[{"ProductID":1,"Quantity":2},{"ProductID":2,"Quantity":2},{"ProductID":6,"Quantity":2}]}')
+    #r = StartRequestProcessing('{"RequestType":"AdjustProductQuantity","StoreID":1,"ProductID":1,"CurrentQuantity":25.0,"Notes":"قيمة أولية"}')
     print(r)
-
 
 
 if __name__ == "__main__":

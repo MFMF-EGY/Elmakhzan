@@ -69,7 +69,7 @@ create table Purchase_Invoices(
     DateTime datetime default CURRENT_TIMESTAMP,
     Total_Price int,
     Paid int,
-    Transferred_To_Account int,
+    Subtracted_From_Account int,
     PRIMARY KEY (Invoice_ID)
 );
 create table Purchase_Items(
@@ -90,6 +90,16 @@ create table Transition_Items(
     Product_ID int,
     Quantity int
 );
+create table Products_Quantity_Adjustments(
+    Operation_ID int NOT NULL AUTO_INCREMENT,
+    Store_ID int,
+    DateTime datetime default CURRENT_TIME,
+    Product_ID int,
+    Previous_Quantity float,
+    Current_Quantity float,
+    Notes TEXT,
+    PRIMARY KEY (Operation_ID)
+);
 create table Accounts_Operations(
     Process_ID int NOT NULL AUTO_INCREMENT,
     Person_ID int NOT NULL,
@@ -99,5 +109,5 @@ create table Accounts_Operations(
     Added_To_Account float,
     Debt_Balance float,
     PRIMARY KEY (Process_ID)
-)
+);
 # drop database Elfarid_Metal
