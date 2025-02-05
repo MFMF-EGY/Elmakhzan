@@ -116,3 +116,43 @@ main{
   border-color: var(--button-hover-bgcolor);
   color: white;
 }
+
+input[type=text], input[type=number]{
+  display: inline-block;
+  border: 1px solid #ccc;
+  box-sizing: border-box;
+}
+
+.Form-container{
+  display: none;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background-color: white;
+  border: 1px solid #c7c7c7;
+  box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+}
+
+.Form div{
+  margin: 10px;
+  display: flex;
+  justify-content: space-between;
+}
+
+.Form div:has(button){
+  justify-content: flex-end;
+}
+
+.Form-close{
+  background-color: transparent;
+  border: none;
+  border-radius: 100%;
+  cursor: pointer;
+  width: 20px;
+  height: 20px;
+}
+
+.Form-close:hover{
+  background-color: #f1f1f1;
+}
