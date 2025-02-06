@@ -107,24 +107,26 @@ function ProductsTabContent(){
   const [ WholesalePrice, setWholesalePrice ] = useState("");
   const [ RetailPrice, setRetailPrice ] = useState("");
   const [ ProductQuantity, setProductQuantity ] = useState("");
-  const [ AddedProduct, setAddedProduct ] = useState(false);
+  const [ AddedProduct, setAddedProduct ] = useState(true);
   const [Response, setResponse] = useState([]);
 
   useEffect(() => {
-    var Request = {RequestType:"SearchProducts", StoreID:StoreID};
-    if (ProductID){ Request.ProductID = ProductID; }
-    if (ProductName){ Request.ProductName = ProductName; }
-    if (Trademark){ Request.Trademark = Trademark; }
-    if (ManufactureCountry){ Request.ManufactureCountry = ManufactureCountry; }
-    if (PurchasePrice){ Request.PurchasePrice = PurchasePrice; }
-    if (WholesalePrice){ Request.WholesalePrice = WholesalePrice; }
-    if (RetailPrice){ Request.RetailPrice = RetailPrice; }
-    if (ProductQuantity){ Request.ProductQuantity = ProductQuantity; }
-    axios.get('http://localhost:8000/apis/v1.0/commercial', {params: Request})
-      .then((response)=>{setResponse(response.data)})
-      .catch((err)=>{console.log(err)});
-    setAddedProduct(false);
-  },[]);
+    if (AddedProduct){
+      var Request = {RequestType:"SearchProducts", StoreID:StoreID};
+      if (ProductID){ Request.ProductID = ProductID; }
+      if (ProductName){ Request.ProductName = ProductName; }
+      if (Trademark){ Request.Trademark = Trademark; }
+      if (ManufactureCountry){ Request.ManufactureCountry = ManufactureCountry; }
+      if (PurchasePrice){ Request.PurchasePrice = PurchasePrice; }
+      if (WholesalePrice){ Request.WholesalePrice = WholesalePrice; }
+      if (RetailPrice){ Request.RetailPrice = RetailPrice; }
+      if (ProductQuantity){ Request.ProductQuantity = ProductQuantity; }
+      axios.get('http://localhost:8000/apis/v1.0/commercial', {params: Request})
+        .then((response)=>{setResponse(response.data)})
+        .catch((err)=>{console.log(err)});
+      setAddedProduct(false);
+    }
+  });
   // useEffect(() => {
   //   Request = {RequestType:"SearchProducts", StoreID:StoreID};
   //   if (ProductID){ Request.ProductID = ProductID; }
@@ -233,7 +235,7 @@ function ProductsTabContent(){
             <input type="number" id="Add-product-retail-price"></input>
           </div>
           <div>
-            <label>الكمية</label>
+            <label>عدد الخانات العشرية</label>
             <input type="number" id="Add-product-partial-quantity-precision"></input>
           </div>
           <div>

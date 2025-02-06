@@ -19,7 +19,7 @@ DataBaseConnector = mysql.connector.connect(
 global Cursor
 global GeneratedSql
 global StoreID
-Cursor = DataBaseConnector.cursor(dictionary=True)
+Cursor = DataBaseConnector.cursor(dictionary=True,buffered=True)
 GeneratedSql = ""
 StoreID = 0
 class ErrorCodes:
