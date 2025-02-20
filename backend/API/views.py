@@ -31,11 +31,12 @@ class ErrorCodes:
     ValueNotFound = 6
     InsufficientQuantity = 7
     ExcessQuantity = 8
-    UnregisteredStore = 9
-    UnregisteredProduct = 10
-    UnregisteredPerson = 11
-    InvalidPrecision = 12
-    InvalidFilter = 13
+    NoStoresExist = 9
+    UnregisteredStore = 10
+    UnregisteredProduct = 11
+    UnregisteredPerson = 12
+    InvalidPrecision = 13
+    InvalidFilter = 14
 #TODO: Enhance error handling
 def isintstr(value):
     try:
@@ -261,7 +262,8 @@ class ProcessRequest:
             Sql += "WHERE "
         for Filter in Filters:
             value = RequestList[Filter]
-            Sql += f"{Filter} LIKE '%{value}%' "
+            Sql += f"Products_Table.{Filter} LIKE '%{value}%' "
+        print(Sql)
         Cursor.execute(Sql)
         return {"StatusCode":0,"Data":Cursor.fetchall()}
     def SearchInvoices(RequestList):
@@ -435,6 +437,9 @@ class CheckValidation:
         if len(StoreName)==0:return {"StatusCode":ErrorCodes.EmptyValue,"Variable":"StoreName"}
         return ProcessRequest.AddStore(RequestList)
     def AddProduct(RequestList):
+        Cursor.execute("SELECT COUNT(*) FROM Stores_Table;")
+        if not Cursor.fetchone():
+            return {"StatusCode":ErrorCodes.NoStoresExist,"Data":""}
         try:
             ProductName, Trademark, ManufactureCountry, PurchasePrice, WholesalePrice, RetailPrice, PartialQuantityPrecision =(
                 RequestList["ProductName"], RequestList["Trademark"], RequestList["ManufactureCountry"],
@@ -475,10 +480,10 @@ class CheckValidation:
         if len(ProductName) == 0: return {"StatusCode":ErrorCodes.EmptyValue,"Variable":"ProductName"}
         if len(Trademark) == 0: return {"StatusCode":ErrorCodes.EmptyValue,"Variable": "Trademark"}
         if len(ManufactureCountry) == 0: return {"StatusCode":ErrorCodes.EmptyValue,"Variable": "ManufactureCountry"}
-        if PurchasePrice < 0: return {"StatusCode":ErrorCodes.InvalidValue,"Data":""}
-        if WholesalePrice < 0: return {"StatusCode":ErrorCodes.InvalidValue,"Data":""}
-        if RetailPrice < 0: return {"StatusCode":ErrorCodes.InvalidValue,"Data":""}
-        if PartialQuantityPrecision < 0: return {"StatusCode":ErrorCodes.InvalidValue,"Data":""}
+        if int(PurchasePrice) < 0: return {"StatusCode":ErrorCodes.InvalidValue,"Data":""}
+        if int(WholesalePrice) < 0: return {"StatusCode":ErrorCodes.InvalidValue,"Data":""}
+        if int(RetailPrice) < 0: return {"StatusCode":ErrorCodes.InvalidValue,"Data":""}
+        if int(PartialQuantityPrecision) < 0: return {"StatusCode":ErrorCodes.InvalidValue,"Data":""}
         return ProcessRequest.EditProductInfo(RequestList)
     def GetProductInfo(RequestList):
         try:
@@ -752,7 +757,6 @@ def StartRequestProcessing(Request):
             Response = CheckValidation.GetTransitionDocumentItems(RequestList)
         case "AdjustProductQuantity":
             Response = CheckValidation.AdjustProductQuantity(RequestList)
-    print(str(Response))
     Response = JsonResponse(Response)
     Response["Access-Control-Allow-Origin"] = "*"
     return Response

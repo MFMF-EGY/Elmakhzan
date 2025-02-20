@@ -2,6 +2,7 @@
   --header-color:#282c34;
   --table-header-bgcolor:#203663;
   --button-hover-bgcolor: #203663;
+  --table-row-selected-bgcolor: #a6d8ff;
 }
 
 .App {
@@ -92,7 +93,11 @@ main{
   padding: 8px;
 }
 
-.Table tr:hover {background-color: #ddd;}
+.Table tr:hover:not(.Selected-row) {background-color: #ddd;}
+
+tr.Selected-row {
+  background-color: var(--table-row-selected-bgcolor) !important; 
+}
 
 .Side-bar{
   width: 120px;
@@ -111,10 +116,17 @@ main{
   font-size: medium;
 }
 
-.Sidebar-button:hover{
+.Sidebar-button:hover {
   background-color: var(--button-hover-bgcolor);
   border-color: var(--button-hover-bgcolor);
   color: white;
+}
+
+.Sidebar-button:disabled{
+  background-color: #f1f1f1 !important;
+  border-color: #ccc !important;
+  color: #ccc !important;
+  cursor: default;
 }
 
 input[type=text], input[type=number]{
