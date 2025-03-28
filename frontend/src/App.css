@@ -84,16 +84,26 @@ main{
   background-color: var(--table-header-bgcolor);
   color: white;
 }
-.Table tr:nth-child(odd){
+.Table tr:nth-child(odd), .Table tr:nth-child(odd) td input{
   background-color: #f2f2f2;
 }
 
 .Table td, .Table th {
   border: 1px solid #ddd;
+}
+
+.Table td:not(:has(input)), .Table th {
   padding: 8px;
 }
 
-.Table tr:hover:not(.Selected-row) {background-color: #ddd;}
+.Table td input{
+  width: 100%;
+  height: 32px;
+  font-size: 16px;
+  border: none;
+}
+
+.Table:not(.InputTable) tr:hover:not(.Selected-row) {background-color: #ddd;}
 
 tr.Selected-row {
   background-color: var(--table-row-selected-bgcolor) !important; 
@@ -145,14 +155,18 @@ input[type=text], input[type=number]{
   box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
 }
 
-.Form div{
+.Form > div{
   margin: 10px;
   display: flex;
   justify-content: space-between;
 }
 
-.Form div:has(button){
+.Form > div:has(button){
   justify-content: flex-end;
+}
+
+.Form label{
+  margin-inline-end: 10px;
 }
 
 .Form-close{
@@ -165,5 +179,26 @@ input[type=text], input[type=number]{
 }
 
 .Form-close:hover{
+  background-color: #f1f1f1;
+}
+
+.Drop-list{
+  position: absolute;
+  background-color: white;
+  border: 1px solid #c7c7c7;
+  box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+  z-index: 1;
+  margin: 0px;
+  padding: 0px;
+}
+
+.Drop-list li{
+  padding: 10px;
+  cursor: pointer;
+  list-style-type: none;
+  margin: 0px;
+}
+
+.Drop-list li:hover{
   background-color: #f1f1f1;
 }

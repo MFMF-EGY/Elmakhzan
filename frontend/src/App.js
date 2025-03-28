@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, createContext, useContext, useCallback } from 'react';
+import React, { useState, useEffect, useRef, createContext, useContext, useCallback, use } from 'react';
 import './App.css';
 import axios from 'axios';
 import MainTableTabContent from './MainTableTabContent.js';
@@ -24,6 +24,10 @@ function App() {
   const DebtsAccountsTabContentRef = useRef();
   const CurrentTabContent = useRef(MainTableTabContentRef);
 
+  useEffect(() => {
+    CurrentTabContent.current = MainTableTabContentRef;
+  }, [ProjectID, StoreID]);
+
   const changeTab = (event, TargetTabContent) => {
     document.getElementsByClassName("Active-tab")[0].classList.remove("Active-tab");
     CurrentTabContent.current.current.style.display = "none";
@@ -44,9 +48,9 @@ function App() {
             <div>
               <ul className="Tab-bar">
                 <li className="Tab Active-tab" onClick={(event) => changeTab(event,MainTableTabContentRef)}>القائمة الرئيسية</li>
-                <li className="Tab" onClick={(event) => changeTab(event,SellingTabContentRef)}>عمليات البيع</li>
-                <li className="Tab" onClick={(event) => changeTab(event,PurchaseTabContentRef)}>عمليات الشراء</li>
-                <li className="Tab" onClick={(event) => changeTab(event,TransitionTabContentRef)}>عمليات التحويل</li>
+                <li className="Tab" onClick={(event) => changeTab(event,SellingTabContentRef)}>فواتير البيع</li>
+                <li className="Tab" onClick={(event) => changeTab(event,PurchaseTabContentRef)}>فواتير الشراء</li>
+                <li className="Tab" onClick={(event) => changeTab(event,TransitionTabContentRef)}>مستندات التحويل</li>
                 <li className="Tab" onClick={(event) => changeTab(event,ProductsTabContentRef)}>قائمة المنتجات</li>
                 <li className="Tab" onClick={(event) => changeTab(event,DebtsAccountsTabContentRef)}>حسابات الديون</li>
               </ul>
@@ -94,21 +98,22 @@ const ProjectStoreSelect = React.memo(({value, GlobalContext, setFormSelector}) 
   }, [value]);
 
   useEffect(() => {
-    const fetchStores = async () => {
-      if (ProjectID) {
-        try {
-          const response = await axios.get("http://localhost:8000/apis/v1.0/commercial?RequestType=GetStores&ProjectID="+ProjectID);
-          if (!response.data.StatusCode) {
-            setStores(response.data.Data);
-          }
-        } catch (error) {
-          console.log(error);
-        }
-      }
-    };
     fetchStores();
   }, [value, ProjectID]);
 
+  const fetchStores = async () => {
+    if (ProjectID) {
+      try {
+        const response = await axios.get("http://localhost:8000/apis/v1.0/commercial?RequestType=GetStores&ProjectID="+ProjectID);
+        if (!response.data.StatusCode) {
+          setStores(response.data.Data);
+        }
+      } catch (error) {
+        console.log(error);
+      }
+    }
+  };
+  
   const selectProject = (event) => {
     setProjectID(event.target.value);
     setStoreID(null);
@@ -194,9 +199,13 @@ function CreateStoreForm(){
       StoreAddress: StoreAddressRef.current.value
     }
     await axios.get('http://localhost:8000/apis/v1.0/commercial',{params: RequestParms})
-    .then(() => {
-      setFormSelector("");
-      setProjectStoreChanged(!ProjectStoreChanged);
+    .then((response) => {
+      if (!response.data.StatusCode){
+        setFormSelector("");
+        setProjectStoreChanged(!ProjectStoreChanged);
+      }else{
+        console.log(response.data);
+      }
     })
     .catch((error) => console.log(error))
   }

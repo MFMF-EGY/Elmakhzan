@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, createContext, useContext } from 'react';
+import { useState, useEffect, useRef, createContext, useContext, use } from 'react';
 import axios from 'axios';
 import { GlobalContext } from './App.js';
 
@@ -18,8 +18,8 @@ function ProductsTabContent({ref}){
     ProductQuantity: ""
   });
   const [ UpdateTab, setUpdateTab ] = useState(0);
-  const [ Response, setResponse] = useState([]);
-
+  const [ ProductsList, setProductsList] = useState([]);
+  const [ FullProductsList, setFullProductsList] = useState([]);
   const [ OpendForm, setOpendForm ] = useState(null);
   const AddProductFormRef = useRef(null);
   const EditProductButtonRef = useRef(null);
@@ -27,12 +27,12 @@ function ProductsTabContent({ref}){
   const SearchProductsFormRef = useRef(null);
   const PrintProductsFormRef = useRef(null);
 
-  const [SelectedRow, setSelectedRow] = useState(null);
+  const SelectedRow = useRef(null);
   
-
   useEffect(() => {
-    if (SelectedRow){SelectedRow.classList.remove("Selected-row");}
-    setSelectedRow(null);
+    if (SelectedRow.current){SelectedRow.current.classList.remove("Selected-row");}
+    SelectedRow.current = null;
+    EditProductButtonRef.current.disabled = true;
     setOpendForm(null); 
     fetchProducts();
   }, [UpdateTab, ProjectID, StoreID]);
@@ -51,15 +51,17 @@ function ProductsTabContent({ref}){
       .then(
         (response)=>{
           if (!response.data.StatusCode)
-            {setResponse(response.data.Data)}
+            { console.log(response.data.Data);
+              setProductsList(response.data.Data)}
           else
             {console.log(response.data)}
         })
       .catch((err)=>{console.log(err)});
   }
+
   return(
-    <ProductsTabContext.Provider value={{ SearchParam, setSearchParam, UpdateTab, setUpdateTab, Response, setResponse, OpendForm, setOpendForm, AddProductFormRef,
-      EditProductButtonRef, EditProductFormRef, SearchProductsFormRef, PrintProductsFormRef, SelectedRow, setSelectedRow }}>
+    <ProductsTabContext.Provider value={{ SearchParam, setSearchParam, UpdateTab, setUpdateTab, ProductsList, setProductsList, OpendForm, setOpendForm, AddProductFormRef,
+      EditProductButtonRef, EditProductFormRef, SearchProductsFormRef, PrintProductsFormRef, SelectedRow }}>
       <div className="Tab-content" ref={ref}>
         <div className="Table-container">
           <table className="Table" id="Products-table">
@@ -87,7 +89,7 @@ function ProductsTabContent({ref}){
         <div className='Side-bar'>
           <button className="Sidebar-button" onClick={(event) => setOpendForm("AddProductForm")}>إضافة منتج</button>
           <button className="Sidebar-button" ref={EditProductButtonRef} 
-            onClick={(event) => setOpendForm("EditProductForm")} disabled={SelectedRow?false:true}>تعديل منتج</button>
+            onClick={(event) => setOpendForm("EditProductForm")}>تعديل منتج</button>
           <button className="Sidebar-button" onClick={(event) => setOpendForm("SearchProductsForm")}>بحث</button>
           <button className="Sidebar-button">طباعة المنتجات</button>
         </div>
@@ -97,23 +99,27 @@ function ProductsTabContent({ref}){
 }
 function AddProductForm(){
   const { ProjectID, StoreID } = useContext(GlobalContext);
-  const { UpdateTab, setUpdateTab, AddProductFormRef } = useContext(ProductsTabContext);
+  const { UpdateTab, setUpdateTab, AddProductFormRef, setOpendForm } = useContext(ProductsTabContext);
   const AddProductNameRef = useRef();
   const AddProductTrademarkRef = useRef();
   const AddProductManufactureCountryRef = useRef();
   const AddProductPurchasePriceRef = useRef();
   const AddProductWholesalePriceRef = useRef();
   const AddProductRetailPriceRef = useRef();
+  const AddProductQuantityUnitRef = useRef();
   const AddProductPartialQuantityPrecisionRef = useRef();
-
   const AddProduct = (event) => {
-    var RequestParams = {RequestType:"AddProduct", ProjectID:ProjectID, StoreID:StoreID,
+    var RequestParams = {
+      RequestType:"AddProduct",
+      ProjectID: ProjectID,
+      StoreID: StoreID,
       ProductName: AddProductNameRef.current.value,
       Trademark: AddProductTrademarkRef.current.value,
       ManufactureCountry: AddProductManufactureCountryRef.current.value,
       PurchasePrice: AddProductPurchasePriceRef.current.value,
       WholesalePrice: AddProductWholesalePriceRef.current.value,
       RetailPrice: AddProductRetailPriceRef.current.value,
+      QuantityUnit: AddProductQuantityUnitRef.current.value,
       PartialQuantityPrecision: AddProductPartialQuantityPrecisionRef.current.value
     };
     
@@ -132,7 +138,7 @@ function AddProductForm(){
     <div className="Form-container" id="Add-product-form" ref={AddProductFormRef}>
       <div className="Form">
         <div>
-          <button className='Form-close' onClick={(event) => {AddProductFormRef.current.style.display = "none";}}>X</button>
+          <button className='Form-close' onClick={(event) => setOpendForm("")}>X</button>
         </div>
         <div>
           <label>اسم المنتج</label>
@@ -159,6 +165,10 @@ function AddProductForm(){
           <input type="number" ref={AddProductRetailPriceRef}></input>
         </div>
         <div>
+          <label>وحدة قياس الكمية</label>
+          <input type="text" ref={AddProductQuantityUnitRef}></input>
+        </div>
+        <div>
           <label>عدد الخانات العشرية</label>
           <input type="number" ref={AddProductPartialQuantityPrecisionRef}></input>
         </div>
@@ -171,7 +181,7 @@ function AddProductForm(){
 }
 
 function SearchProductsForm(){
-  const { SearchParam, setSearchParam, UpdateTab, setUpdateTab, SearchProductsFormRef } = useContext(ProductsTabContext);
+  const { SearchParam, setSearchParam, UpdateTab, setUpdateTab, SearchProductsFormRef, setOpendForm } = useContext(ProductsTabContext);
   const SearchProductsIdRef = useRef(null);
   const SearchProductsNameRef = useRef(null);
   const SearchProductsTrademarkRef = useRef(null);
@@ -195,7 +205,7 @@ function SearchProductsForm(){
     <div className="Form-container" ref={SearchProductsFormRef}>
       <div className="Form">
         <div>
-          <button className='Form-close' onClick={(event) => {SearchProductsFormRef.current.style.display = "none";}}>X</button>
+          <button className='Form-close' onClick={(event) => setOpendForm("")}>X</button>
         </div>
         <div>
           <label>الرقم التعريفي</label>
@@ -234,7 +244,8 @@ function SearchProductsForm(){
 }
 
 function EditProductForm(){
-  const { StoreID, UpdateTab, setUpdateTab, Response, SelectedRow, EditProductFormRef } = useContext(ProductsTabContext);
+  const { ProjectID } = useContext(GlobalContext);
+  const { UpdateTab, setUpdateTab, ProductsList, SelectedRow, EditProductFormRef, setOpendForm } = useContext(ProductsTabContext);
   const EditProductID = useRef(null);
   const EditProductName = useRef(null);
   const EditProductTrademark = useRef(null);
@@ -242,9 +253,11 @@ function EditProductForm(){
   const EditProductPurchasePrice = useRef(null);
   const EditProductWholesalePrice = useRef(null);
   const EditProductRetailPrice = useRef(null);
+  const EditProductQuantityUnit = useRef(null);
   const EditProductPartialQuantityPrecision = useRef(null);
   const EditProduct = (event) => {
-    var RequestParams = {RequestType:"EditProductInfo", StoreID:StoreID,
+    var RequestParams = {RequestType:"EditProductInfo",
+      ProjectID:ProjectID,
       ProductID:EditProductID.current.value,
       ProductName:EditProductName.current.value,
       Trademark:EditProductTrademark.current.value,
@@ -252,6 +265,7 @@ function EditProductForm(){
       PurchasePrice:EditProductPurchasePrice.current.value,
       WholesalePrice:EditProductWholesalePrice.current.value,
       RetailPrice:EditProductRetailPrice.current.value,
+      QuantityUnit:EditProductQuantityUnit.current.value,
       PartialQuantityPrecision:EditProductPartialQuantityPrecision.current.value
     };
     axios.get('http://localhost:8000/apis/v1.0/commercial', {params: RequestParams})
@@ -267,14 +281,16 @@ function EditProductForm(){
 
   useEffect(() => {
     if (SelectedRow){
-      EditProductID.current.value = Response.Data[SelectedRow.rowIndex - 1].Product_ID;
-      EditProductName.current.value = Response.Data[SelectedRow.rowIndex - 1].Product_Name;
-      EditProductTrademark.current.value = Response.Data[SelectedRow.rowIndex - 1].Trademark;
-      EditProductManufactureCountry.current.value = Response.Data[SelectedRow.rowIndex - 1].Manufacture_Country;
-      EditProductPurchasePrice.current.value = Response.Data[SelectedRow.rowIndex - 1].Purchase_Price;
-      EditProductWholesalePrice.current.value = Response.Data[SelectedRow.rowIndex - 1].Wholesale_Price;
-      EditProductRetailPrice.current.value = Response.Data[SelectedRow.rowIndex - 1].Retail_Price;
-      EditProductPartialQuantityPrecision.current.value = Response.Data[SelectedRow.rowIndex - 1].Partial_Quantity_Precision;
+      let RowIndex = SelectedRow.current.rowIndex - 1;
+      EditProductID.current.value = ProductsList[RowIndex].Product_ID;
+      EditProductName.current.value = ProductsList[RowIndex].Product_Name;
+      EditProductTrademark.current.value = ProductsList[RowIndex].Trademark;
+      EditProductManufactureCountry.current.value = ProductsList[RowIndex].Manufacture_Country;
+      EditProductPurchasePrice.current.value = ProductsList[RowIndex].Purchase_Price;
+      EditProductWholesalePrice.current.value = ProductsList[RowIndex].Wholesale_Price;
+      EditProductRetailPrice.current.value = ProductsList[RowIndex].Retail_Price;
+      EditProductQuantityUnit.current.value = ProductsList[RowIndex].Quantity_Unit;
+      EditProductPartialQuantityPrecision.current.value = ProductsList[RowIndex].Partial_Quantity_Precision;
     }
   })
 
@@ -282,7 +298,7 @@ function EditProductForm(){
     <div className="Form-container" ref={EditProductFormRef}>
       <div className="Form">
         <div>
-          <button className='Form-close' onClick={(event) => {EditProductFormRef.current.style.display = "none";}}>X</button>
+          <button className='Form-close' onClick={(event) => setOpendForm("")}>X</button>
         </div>
         <div>
           <label>الرقم التعريفي</label>
@@ -313,6 +329,10 @@ function EditProductForm(){
           <input type="number" ref={EditProductRetailPrice} />
         </div>
         <div>
+          <label>وحدة قياس الكمية</label>
+          <input type="text" ref={EditProductQuantityUnit} />
+        </div>
+        <div>
           <label>عدد الخانات العشرية</label>
           <input type="number" ref={EditProductPartialQuantityPrecision} />
         </div>
@@ -324,33 +344,31 @@ function EditProductForm(){
   );
 }
 
-
 function ProductsTableBody(){
-  const { Response, SelectedRow, setSelectedRow } = useContext(ProductsTabContext);
-  useEffect(() => {
-    if (SelectedRow){SelectedRow.classList.add("Selected-row")};
-  })
-  try{
-    return (
-      Response.map((product, index) => (
-        <tr onClick={(event)=>{
-          if (SelectedRow){SelectedRow.classList.remove("Selected-row");}
-          setSelectedRow(event.currentTarget);
-        }}>
-          <td>{index + 1}</td>
-          <td>{product.Product_ID}</td>
-          <td>{product.Product_Name}</td>
-          <td>{product.Trademark}</td>
-          <td>{product.Manufacture_Country}</td>
-          <td>{product.Purchase_Price}</td>
-          <td>{product.Wholesale_Price}</td>
-          <td>{product.Retail_Price}</td>
-          <td>{product.Quantity}</td>
-        </tr>
-      ))
-    )
-  }catch{return ""}
+  const { ProductsList, SelectedRow, EditProductButtonRef } = useContext(ProductsTabContext);
+  
+  const selectRow = (event) => {
+    if (SelectedRow.current){SelectedRow.current.classList.remove("Selected-row");}
+    SelectedRow.current = event.currentTarget;
+    SelectedRow.current.classList.add("Selected-row");
+    EditProductButtonRef.current.disabled = false;
+  }
 
+  return (
+    ProductsList.map((product, index) => (
+      <tr onClick={(event)=>selectRow(event)}>
+        <td>{index + 1}</td>
+        <td>{product.Product_ID}</td>
+        <td>{product.Product_Name}</td>
+        <td>{product.Trademark}</td>
+        <td>{product.Manufacture_Country}</td>
+        <td>{product.Purchase_Price}</td>
+        <td>{product.Wholesale_Price}</td>
+        <td>{product.Retail_Price}</td>
+        <td>{product.Quantity+" "+product.Quantity_Unit}</td>
+      </tr>
+    ))
+  );
 }
 export default ProductsTabContent;
       

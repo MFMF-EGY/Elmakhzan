@@ -13,6 +13,7 @@ create table Products_Table(
     Purchase_Price int,
     Wholesale_Price int,
     Retail_Price int,
+    Quantity_Unit varchar(20),
     Partial_Quantity_Precision int,
     PRIMARY KEY (Product_ID)
 );
@@ -33,7 +34,7 @@ create table Stores_Table(
 create table Selling_Invoices(
     Invoice_ID int NOT NULL AUTO_INCREMENT,
     Store_ID int,
-    Client_ID int,
+    Client_Name VARCHAR(50),
     DateTime datetime default CURRENT_TIMESTAMP,
     Total_Price int,
     Paid int,
@@ -44,12 +45,12 @@ create table Selling_Items(
     Invoice_ID int NOT NULL,
     Product_ID int,
     Quantity int,
-    Selling_Price int
+    Unit_Price int
 );
 create table Refund_Invoices(
     Invoice_ID int NOT NULL AUTO_INCREMENT,
     Store_ID int,
-    Client_ID int,
+    Client_Name VARCHAR(50),
     DateTime datetime default CURRENT_TIMESTAMP,
     Total_Price int,
     PRIMARY KEY (Invoice_ID)
@@ -58,13 +59,13 @@ create table Refund_Items(
     Invoice_ID int NOT NULL,
     Product_ID int,
     Quantity int,
-    Refund_Price int
+    Unit_Price int
 );
 
 create table Purchase_Invoices(
     Invoice_ID int NOT NULL AUTO_INCREMENT,
     Store_ID int,
-    Seller_ID int,
+    Seller_Name VARCHAR(50),
     DateTime datetime default CURRENT_TIMESTAMP,
     Total_Price int,
     Paid int,
@@ -75,7 +76,7 @@ create table Purchase_Items(
     Invoice_ID int NOT NULL,
     Product_ID int,
     Quantity int,
-    Purchase_Price int
+    Unit_Price int
 );
 create table Transition_Documents(
     Document_ID int NOT NULL AUTO_INCREMENT,
@@ -102,6 +103,8 @@ create table Products_Quantity_Adjustments(
 create table Accounts_Operations(
     Process_ID int NOT NULL AUTO_INCREMENT,
     Person_ID int NOT NULL,
+    Operation_Type varchar(20),
+    Document_ID int,
     Description TINYTEXT,
     Required_Amount float,
     Paid float,

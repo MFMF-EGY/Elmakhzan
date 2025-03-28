@@ -1,1 +1,1 @@
-/mnt/307E40B27E4072A0/Users/mohfa/Documents/GitHub/Elmakhzan/scripts/run.sh
+./run.sh
