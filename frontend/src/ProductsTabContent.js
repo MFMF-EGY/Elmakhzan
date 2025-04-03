@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, createContext, useContext, use } from 'react';
 import axios from 'axios';
 import { GlobalContext } from './App.js';
+import { API_URL } from './App.js';
 
 const ProductsTabContext = createContext();
 
@@ -19,7 +20,6 @@ function ProductsTabContent({ref}){
   });
   const [ UpdateTab, setUpdateTab ] = useState(0);
   const [ ProductsList, setProductsList] = useState([]);
-  const [ FullProductsList, setFullProductsList] = useState([]);
   const [ OpendForm, setOpendForm ] = useState(null);
   const AddProductFormRef = useRef(null);
   const EditProductButtonRef = useRef(null);
@@ -47,12 +47,11 @@ function ProductsTabContent({ref}){
     if (SearchParam.WholesalePrice){ RequestParams.Wholesale_Price = SearchParam.WholesalePrice; }
     if (SearchParam.RetailPrice){ RequestParams.Retail_Price = SearchParam.RetailPrice; }
     if (SearchParam.ProductQuantity){ RequestParams.Product_Quantity = SearchParam.ProductQuantity; }
-    await axios.get('http://localhost:8000/apis/v1.0/commercial', {params: RequestParams})
+    await axios.get(API_URL, {params: RequestParams})
       .then(
         (response)=>{
           if (!response.data.StatusCode)
-            { console.log(response.data.Data);
-              setProductsList(response.data.Data)}
+            {setProductsList(response.data.Data)}
           else
             {console.log(response.data)}
         })
@@ -123,7 +122,7 @@ function AddProductForm(){
       PartialQuantityPrecision: AddProductPartialQuantityPrecisionRef.current.value
     };
     
-    axios.get('http://localhost:8000/apis/v1.0/commercial', {params: RequestParams},)
+    axios.get(API_URL, {params: RequestParams},)
       .then((response)=>{
         if (!response.data.StatusCode){
           setUpdateTab(UpdateTab + 1);
@@ -268,7 +267,7 @@ function EditProductForm(){
       QuantityUnit:EditProductQuantityUnit.current.value,
       PartialQuantityPrecision:EditProductPartialQuantityPrecision.current.value
     };
-    axios.get('http://localhost:8000/apis/v1.0/commercial', {params: RequestParams})
+    axios.get(API_URL, {params: RequestParams})
       .then((response)=>{
         if (!response.data.StatusCode){
           setUpdateTab(UpdateTab + 1);

@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, createContext, useContext } from 'react';
 import axios from 'axios';
 import { GlobalContext } from './App.js';
-import InvoiceItem from './InvoiceItem.js';
+import { InvoiceItem } from './ItemComponents.js';
+import { API_URL } from './App.js';
 
 const SellingTabContext = createContext();
 
@@ -34,17 +35,18 @@ function SellingTabContent({ref}){
   }, [UpdateTab, ProjectID, StoreID]);
 
   const fetchInvoices = async () => {
-    var RequestParams = {
+    let RequestParams = {
       RequestType:"SearchInvoices",
       InvoiceType:"Selling",
-      ProjectID:ProjectID, StoreID:StoreID
+      ProjectID:ProjectID,
+      StoreID:StoreID
     };
     if (SearchParam.InvoiceID){ RequestParams.Invoice_ID = SearchParam.InvoiceID; }
     if (SearchParam.ClientName){ RequestParams.Seller_Name = SearchParam.SellerName; }
     if (SearchParam.DataTime){ RequestParams.Data_Time = SearchParam.DataTime; }
     if (SearchParam.TotalPrice){ RequestParams.Total_Price = SearchParam.TotalPrice; }
     if (SearchParam.Paid){ RequestParams.Paid = SearchParam.Paid; }
-    await axios.get('http://localhost:8000/apis/v1.0/commercial', {params: RequestParams})
+    await axios.get(API_URL, {params: RequestParams})
       .then(
         (response)=>{
           if (!response.data.StatusCode)
@@ -61,7 +63,7 @@ function SellingTabContent({ref}){
       ProjectID: ProjectID, 
       InvoiceID: InvoiceID
     };
-    await axios.get('http://localhost:8000/apis/v1.0/commercial', {params: RequestParams})
+    await axios.get(API_URL, {params: RequestParams})
       .then(
         (response)=>{
           if (!response.data.StatusCode)
@@ -146,7 +148,7 @@ function CreateInvoiceForm(){
       }: null)),
       Paid: PaidFieldRef.current.value
     }
-    await axios.get('http://localhost:8000/apis/v1.0/commercial', {params: RequestParams})
+    await axios.get(API_URL, {params: RequestParams})
       .then((response) => {
         if (!response.data.StatusCode){
           setUpdateTab(UpdateTab + 1);
@@ -215,7 +217,7 @@ function CreateInvoiceForm(){
 
 function EditInvoiceForm(){
   const { ProjectID, StoreID } = useContext(GlobalContext);
-  const { UpdateTab, setUpdateTab, CreateInvoiceFormRef, setOpendForm, SelectedRow } = useContext(SellingTabContext);
+  const { UpdateTab, setUpdateTab, setOpendForm, SelectedRow } = useContext(SellingTabContext);
   const [ Loading , setLoading ] = useState(true);
   const [ InvoiceInfo, setInvoiceInfo ] = useState({});
   const ClientNameFieldRef = useRef();
@@ -240,7 +242,7 @@ function EditInvoiceForm(){
       ProjectID: ProjectID,
       InvoiceID: SelectedRow.current.children[1].innerText
     }
-    await axios.get('http://localhost:8000/apis/v1.0/commercial', {params: RequestParams})
+    await axios.get(API_URL, {params: RequestParams})
       .then((response) => {
         if (!response.data.StatusCode){
           response.data.Data.Items.map((item, index) => {
@@ -285,7 +287,7 @@ function EditInvoiceForm(){
       }: null)),
       Paid: PaidFieldRef.current.value
     }
-    await axios.get('http://localhost:8000/apis/v1.0/commercial', {params: RequestParams})
+    await axios.get(API_URL, {params: RequestParams})
       .then((response) => {
         if (!response.data.StatusCode){
           setUpdateTab(UpdateTab + 1);
@@ -300,7 +302,7 @@ function EditInvoiceForm(){
   },[])
 
   return(
-    <div className='Form-container' ref={CreateInvoiceFormRef}>
+    <div className='Form-container'>
       <div className="Form">
         <div>
           <button className="Form-close" onClick={(event) => setOpendForm("")}>X</button>

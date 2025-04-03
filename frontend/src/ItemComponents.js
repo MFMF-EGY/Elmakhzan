@@ -1,8 +1,9 @@
 import { useState, useEffect, useContext, useRef, use } from "react";
 import axios from "axios";
 import { GlobalContext } from "./App.js";
+import { API_URL } from "./App.js";
 
-function InvoiceItem({ItemsList,Index}){
+export function InvoiceItem({ItemsList,Index}){
   const { ProjectID } = useContext(GlobalContext);
   const { StoreID } = useContext(GlobalContext);
   const [ ItemInfo, setItemInfo ] = useState(ItemsList.current[Index]);
@@ -23,7 +24,7 @@ function InvoiceItem({ItemsList,Index}){
       StoreID: StoreID,
       Product_Name: event.target.value
     }
-    await axios.get('http://localhost:8000/apis/v1.0/commercial', {params: RequestParams})
+    await axios.get(API_URL, {params: RequestParams})
       .then((response) => {
         if (!response.data.StatusCode){
           setSuggestions(response.data.Data);
@@ -83,4 +84,77 @@ function InvoiceItem({ItemsList,Index}){
   )
 }
 
-export default InvoiceItem;
+export function TransitionDocumentItem({ItemsList,Index}){
+  const { ProjectID } = useContext(GlobalContext);
+  const { StoreID } = useContext(GlobalContext);
+  const [ ItemInfo, setItemInfo ] = useState(ItemsList.current[Index]);
+  const [ Suggestions, setSuggestions ] = useState([]);
+  const [ showSuggestions, setShowSuggestions ] = useState(false);
+  const ProductNameRef = useRef();
+  const TrademarkRef = useRef();
+  const ManufactureCountryRef = useRef();
+  const QuantityRef = useRef();
+  const UnitRef = useRef();
+
+  const suggestProduct = async (event) => {
+    var RequestParams = {
+      RequestType: "SearchProducts",
+      ProjectID: ProjectID,
+      StoreID: StoreID,
+      Product_Name: event.target.value
+    }
+    await axios.get(API_URL, {params: RequestParams})
+      .then((response) => {
+        if (!response.data.StatusCode){
+          setSuggestions(response.data.Data);
+          setShowSuggestions(true);
+        }else{
+          console.log(response.data);
+        }
+      })
+      .catch((error) => console.log(error))
+  }
+  useEffect(() => {
+    ProductNameRef.current.value = ItemInfo.ProductName;
+    TrademarkRef.current.value = ItemInfo.Trademark;
+    ManufactureCountryRef.current.value = ItemInfo.ManufactureCountry;
+    QuantityRef.current.value = ItemInfo.Quantity;
+    UnitRef.current.value = ItemInfo.QuantityUnit;
+    ItemsList.current[Index] = ItemInfo;
+  },[ItemInfo]);
+  
+  return(
+    <tr>
+      <td>{Index+1}</td>
+      <td>
+        <input type="text" ref={ProductNameRef} onChange={(event) => { suggestProduct(event)}}
+        onFocus={(event)=>{Suggestions.length > 0 && setShowSuggestions(true)}} onBlur={(event)=>{}}/>
+        {showSuggestions && Suggestions.length > 0 &&
+          <ul className="Drop-list">
+            {Suggestions.map((suggestion) => (
+              <li key={suggestion.ProductID} onClick={(event) => {
+                ItemsList.current[Index].ProductID = suggestion.Product_ID;
+                setItemInfo({
+                  ...ItemInfo,
+                  ProductName: suggestion.Product_Name,
+                  ProductID: suggestion.Product_ID,
+                  Trademark: suggestion.Trademark,
+                  ManufactureCountry: suggestion.Manufacture_Country,
+                  QuantityUnit: suggestion.Quantity_Unit
+                });
+                setShowSuggestions(false);
+              }}>
+                {suggestion.Product_Name + " - " + suggestion.Trademark + " - " + suggestion.Manufacture_Country}
+              </li>
+            ))}
+          </ul>
+        }
+      </td>
+      <td>{ItemInfo.ProductID}</td>
+      <td><input type="text" ref={TrademarkRef}></input></td>
+      <td><input type="text" ref={ManufactureCountryRef}></input></td>
+      <td><input type="number" ref={QuantityRef} onChange={(event) => {ItemsList.current[Index].Quantity = event.target.value}}></input></td>
+      <td><input type="text" ref={UnitRef}></input></td>
+    </tr>
+  )
+}

@@ -73,8 +73,11 @@ main{
 }
 .Table-container{
   width: 100%;
+  overflow: scroll;
 }
-
+.Table-container > .Table{
+  margin-bottom: 5%;
+}
 .Table{
   border-collapse: collapse;
   width: 100%;

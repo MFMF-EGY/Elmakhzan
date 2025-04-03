@@ -8,6 +8,7 @@ import PurchaseTabContent from './PurchaseTabContent.js';
 import TransitionTabContent from './TransitionTabContent.js';
 import DebtsAccountsTabContent from './DebtsAccountsTabContent.js';
 
+export const API_URL = 'http://0.0.0.0:8000/apis/v1.0/commercial';
 export const GlobalContext = createContext();
 const FormsContext = createContext();
 
@@ -86,7 +87,7 @@ const ProjectStoreSelect = React.memo(({value, GlobalContext, setFormSelector}) 
   useEffect(() => {
     const fetchProjects = async () => {
       try {
-        const response = await axios.get('http://localhost:8000/apis/v1.0/commercial?RequestType=GetProjects');
+        const response = await axios.get(API_URL + '?RequestType=GetProjects');
         if (!response.data.StatusCode) {
           setProjects(response.data.Data);
         }
@@ -104,7 +105,7 @@ const ProjectStoreSelect = React.memo(({value, GlobalContext, setFormSelector}) 
   const fetchStores = async () => {
     if (ProjectID) {
       try {
-        const response = await axios.get("http://localhost:8000/apis/v1.0/commercial?RequestType=GetStores&ProjectID="+ProjectID);
+        const response = await axios.get(API_URL + "?RequestType=GetStores&ProjectID="+ProjectID);
         if (!response.data.StatusCode) {
           setStores(response.data.Data);
         }
@@ -156,7 +157,7 @@ function CreateProjectForm(){
       ProjectName: ProjectNameRef.current.value,
       ProjectDescription: ProjectDescriptionRef.current.value
     }
-    await axios.get('http://localhost:8000/apis/v1.0/commercial',{params: RequestParms})
+    await axios.get(API_URL,{params: RequestParms})
     .then(() => {
       setFormSelector("");
       setProjectStoreChanged(!ProjectStoreChanged);
@@ -198,7 +199,7 @@ function CreateStoreForm(){
       StoreName: StoreNameRef.current.value,
       StoreAddress: StoreAddressRef.current.value
     }
-    await axios.get('http://localhost:8000/apis/v1.0/commercial',{params: RequestParms})
+    await axios.get(API_URL,{params: RequestParms})
     .then((response) => {
       if (!response.data.StatusCode){
         setFormSelector("");

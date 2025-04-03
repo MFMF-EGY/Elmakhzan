@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, createContext, useContext, use } from 'react';
 import axios from 'axios';
 import { GlobalContext } from './App.js';
-import InvoiceItem from './InvoiceItem.js'
+import { InvoiceItem } from './ItemComponents.js'
+import { API_URL } from './App.js';
 
 const PurchaseTabContext = createContext();
 
@@ -44,7 +45,7 @@ function PurchaseTabContent({ref}){
     if (SearchParam.DataTime){ RequestParams.Data_Time = SearchParam.DataTime; }
     if (SearchParam.TotalPrice){ RequestParams.Total_Price = SearchParam.TotalPrice; }
     if (SearchParam.Paid){ RequestParams.Paid = SearchParam.Paid; }
-    await axios.get('http://localhost:8000/apis/v1.0/commercial', {params: RequestParams})
+    await axios.get(API_URL, {params: RequestParams})
       .then(
         (response)=>{
           if (!response.data.StatusCode)
@@ -60,7 +61,7 @@ function PurchaseTabContent({ref}){
       ProjectID: ProjectID, 
       InvoiceID: InvoiceID
     };
-    await axios.get('http://localhost:8000/apis/v1.0/commercial', {params: RequestParams})
+    await axios.get(API_URL, {params: RequestParams})
       .then(
         (response)=>{
           if (!response.data.StatusCode)
@@ -138,7 +139,7 @@ function CreateInvoiceForm(){
       }: null)),
       Paid: CreateInvoicePaidRef.current.value
     }
-    await axios.get('http://localhost:8000/apis/v1.0/commercial', {params: RequestParams})
+    await axios.get(API_URL, {params: RequestParams})
       .then((response) => {
         if (!response.data.StatusCode){
           setUpdateTab(UpdateTab + 1);
@@ -169,7 +170,7 @@ function CreateInvoiceForm(){
                 <th>اسم المنتج</th>
                 <th>الكود</th>
                 <th>العلامة التجارية</th>
-                <th>بلد التصنيع</th>
+                <th>بلد الصنع</th>
                 <th>الكمية</th>
                 <th>الوحدة</th>
                 <th>سعر الوحدة</th>
@@ -206,8 +207,8 @@ function EditInvoiceForm(){
   const { UpdateTab, setUpdateTab, CreateInvoiceFormRef, setOpendForm, SelectedRow } = useContext(PurchaseTabContext);
   const [ Loading , setLoading ] = useState(true);
   const [ InvoiceInfo, setInvoiceInfo ] = useState({});
-  const CreateInvoiceSellerNameRef = useRef();
-  const CreateInvoicePaidRef = useRef();
+  const SellerNameFieldRef = useRef();
+  const PaidFieldRef = useRef();
   const Itemslist = useRef(Array.from({ length: 12 }, () => ({
     ProductName: "",
     ProductID: "",
@@ -226,7 +227,7 @@ function EditInvoiceForm(){
       ProjectID: ProjectID,
       InvoiceID: SelectedRow.current.children[1].innerText
     }
-    await axios.get('http://localhost:8000/apis/v1.0/commercial', {params: RequestParams})
+    await axios.get(API_URL, {params: RequestParams})
       .then((response) => {
         if (!response.data.StatusCode){
           response.data.Data.Items.map((item, index) => {
@@ -261,15 +262,15 @@ function EditInvoiceForm(){
       RequestType: "EditPurchaseInvoice",
       ProjectID: ProjectID,
       InvoiceID: InvoiceInfo.InvoiceID,
-      SellerName: CreateInvoiceSellerNameRef.current.value,
+      SellerName: SellerNameFieldRef.current.value,
       Orders: Itemslist.current.map((item) => (item.ProductID !== "" && item.Quantity !== "" && item.UnitPrice !== "" ? {
         ProductID: item.ProductID,
         Quantity: item.Quantity,
         UnitPrice: item.UnitPrice,
       }: null)),
-      Paid: CreateInvoicePaidRef.current.value
+      Paid: PaidFieldRef.current.value
     }
-    await axios.get('http://localhost:8000/apis/v1.0/commercial', {params: RequestParams})
+    await axios.get(API_URL, {params: RequestParams})
       .then((response) => {
         if (!response.data.StatusCode){
           setUpdateTab(UpdateTab + 1);
@@ -281,7 +282,7 @@ function EditInvoiceForm(){
   }
   useEffect(() => {
     fetchInvoice();
-  },[])
+  }, [])
 
   return(
     <div className='Form-container' ref={CreateInvoiceFormRef}>
@@ -298,7 +299,7 @@ function EditInvoiceForm(){
             </div>
             <div>
               <label>اسم البائع</label>
-              <input type="text" defaultValue={InvoiceInfo.SellerName} ref={CreateInvoiceSellerNameRef}></input>
+              <input type="text" defaultValue={InvoiceInfo.SellerName} ref={SellerNameFieldRef}></input>
             </div>
           </div>
           <div>
@@ -309,7 +310,7 @@ function EditInvoiceForm(){
                   <th>اسم المنتج</th>
                   <th>الكود</th>
                   <th>العلامة التجارية</th>
-                  <th>بلد التصنيع</th>
+                  <th>بلد الصنع</th>
                   <th>الكمية</th>
                   <th>الوحدة</th>
                   <th>سعر الوحدة</th>
@@ -318,7 +319,7 @@ function EditInvoiceForm(){
               </thead>
               <tbody>
                 {Itemslist.current.map((item, index) => (
-                    <InvoiceItem ItemsList={Itemslist} Index={index}/>
+                  <InvoiceItem ItemsList={Itemslist} Index={index}/>
                 ))}
               </tbody>
             </table>
@@ -326,7 +327,7 @@ function EditInvoiceForm(){
           <div>
             <div>
               <label>المدفوع</label>
-              <input type="text" defaultValue={InvoiceInfo.Paid} ref={CreateInvoicePaidRef}></input>
+              <input type="text" defaultValue={InvoiceInfo.Paid} ref={PaidFieldRef}></input>
             </div>
           </div>
           <div>
