@@ -88,7 +88,7 @@ function SellingTabContent({ref}){
                 <th>الوقت والتاريخ</th>
                 <th>المبلغ المطلوب</th>
                 <th>المبلغ المدفوع</th>
-                <th>المضاف لحساب الدين</th>
+                <th>محول لحساب الدين</th>
               </tr>
             </thead>
             <tbody>
@@ -123,7 +123,7 @@ function CreateInvoiceForm(){
   const ClientNameFieldRef = useRef();
   const TotalPriceFieldRef = useRef();
   const PaidFieldRef = useRef();
-  const AddToAccountFieldRef = useRef();
+  const TransferredToAccountFieldRef = useRef();
   const Itemslist = useRef(Array.from({ length: 12 }, () => ({
     ProductName: "",
     ProductID: "",
@@ -134,7 +134,18 @@ function CreateInvoiceForm(){
     UnitPrice: "",
     Price: ""
   })));
-
+  const ExistingQuantities = useRef([]);
+  
+  const autoFill = () => {
+    TotalPriceFieldRef.current.value = Itemslist.current.reduce((acc, item) => {
+      return acc + (item.Quantity * item.UnitPrice);
+    },0);
+    TransferredToAccountFieldRef.current.value = Number(TotalPriceFieldRef.current.value) - Number(PaidFieldRef.current.value);
+    checkPaid();
+  }
+  const checkPaid = () => {
+    PaidFieldRef.current.className = Number(PaidFieldRef.current.value) > Number(TotalPriceFieldRef.current.value) ? "Invalid-field-data" : "";
+  }
   const createInvoice = async (event) => {
     var RequestParams = {
       RequestType: "Sell",
@@ -163,12 +174,17 @@ function CreateInvoiceForm(){
     <div className='Form-container'>
       <div className="Form">
         <div>
-          <button className="Form-close" onClick={(event) => setOpendForm("")}>X</button>
+          <button className="Form-close" onClick={() => setOpendForm("")}>X</button>
         </div>
         <div>
           <div>
             <label>اسم العميل</label>
-            <input type="text" ref={ClientNameFieldRef}></input>
+            <input type="text" ref={ClientNameFieldRef} onBlur={() => {
+              ClientNameFieldRef.current.className = ClientNameFieldRef.current.value === "" ? "Invalid-field-data" : "";
+            }}
+            onChange={() =>{
+              ClientNameFieldRef.current.className = "";
+            }}/>
           </div>
         </div>
         <div>
@@ -188,7 +204,7 @@ function CreateInvoiceForm(){
             </thead>
             <tbody>
               {Itemslist.current.map((item, index) => (
-                  <InvoiceItem ItemsList={Itemslist} Index={index}/>
+                  <InvoiceItem InvoiceType="Selling" ItemsList={Itemslist.current} ExistingQuantities={ExistingQuantities.current} Index={index} outerAutoFill={autoFill}/>
               ))}
             </tbody>
           </table>
@@ -196,15 +212,21 @@ function CreateInvoiceForm(){
         <div>
           <div>
             <label>اجمالي المبلغ</label>
-            <input type="text" ref={TotalPriceFieldRef} />
+            <input type="number" ref={TotalPriceFieldRef} disabled/>
           </div>
           <div>
             <label>المدفوع</label>
-            <input type="text" ref={PaidFieldRef} />
+            <input type="number" ref={PaidFieldRef} onChange={(event) => {
+              TransferredToAccountFieldRef.current.value = Number(TotalPriceFieldRef.current.value) - Number(PaidFieldRef.current.value);
+              checkPaid();
+            }}/>
           </div>
           <div>
-            <label>المضاف لحساب الدين</label>
-            <input type="text" ref={AddToAccountFieldRef} />
+            <label>محول لحساب الدين</label>
+            <input type="number" ref={TransferredToAccountFieldRef} onChange={(event) => {
+              PaidFieldRef.current.value = Number(TotalPriceFieldRef.current.value) - Number(TransferredToAccountFieldRef.current.value);
+              checkPaid();
+            }}/>
           </div>
         </div>
         <div>
@@ -234,6 +256,18 @@ function EditInvoiceForm(){
     UnitPrice: "",
     Price: ""
   })));
+  const ExistingQuantities = useRef([]);
+
+  const autoFill = () => {
+    TotalPriceFieldRef.current.value = Itemslist.current.reduce((acc, item) => {
+      return acc + (item.Quantity * item.UnitPrice);
+    },0);
+    TransferredToAccountFieldRef.current.value = Number(TotalPriceFieldRef.current.value) - Number(PaidFieldRef.current.value);
+    checkPaid();
+  }
+  const checkPaid = () => {
+    PaidFieldRef.current.className = Number(PaidFieldRef.current.value) > Number(TotalPriceFieldRef.current.value) ? "Invalid-field-data" : "";
+  }
 
   const fetchInvoice = async () => {
     var RequestParams = {
@@ -262,10 +296,36 @@ function EditInvoiceForm(){
             Paid: response.data.Data.Paid,
             TransferredToAccount: response.data.Data.Transferred_To_Account
           });
-          setLoading(false);
+          fetchExistingQuantites();
         }else{
           console.log(response.data);
           setLoading("error");
+        }
+      })
+      .catch((error) => {
+        console.log(error);
+        setLoading("error");
+      })
+  }
+
+  const fetchExistingQuantites = async () => {
+    let RequestParams = {
+      RequestType: "GetProductsQuantities",
+      ProjectID: ProjectID,
+      StoreID: StoreID,
+    }
+    let ProductIDs = Itemslist.current.map((item) => item.ProductID);
+    for (let i = 0; i < ProductIDs.length; i++){
+      RequestParams[`ProductsIDs[${i}]`] = ProductIDs[i] ? ProductIDs[i] : undefined;
+    }
+    await axios.get(API_URL, {params: RequestParams})
+      .then((response) => {
+        if (!response.data.StatusCode){
+          ExistingQuantities.current = response.data.Data;
+          setLoading(false)
+        }else{
+          console.log(response.data);
+          setLoading("error")
         }
       })
       .catch((error) => {
@@ -316,7 +376,12 @@ function EditInvoiceForm(){
             </div>
             <div>
               <label>اسم العميل</label>
-              <input type="text" defaultValue={InvoiceInfo.ClientName} ref={ClientNameFieldRef}></input>
+              <input type="text" defaultValue={InvoiceInfo.ClientName} ref={ClientNameFieldRef} onBlur={(event) => {
+                ClientNameFieldRef.current.className = ClientNameFieldRef.current.value === "" ? "Invalid-field-data" : "";
+              }}
+              onChange={(event) =>{
+                ClientNameFieldRef.current.className = "";
+              }}/>
             </div>
           </div>
           <div>
@@ -336,7 +401,7 @@ function EditInvoiceForm(){
               </thead>
               <tbody>
                 {Itemslist.current.map((item, index) => (
-                    <InvoiceItem ItemsList={Itemslist} Index={index}/>
+                    <InvoiceItem InvoiceType="EditSelling" ItemsList={Itemslist.current} ExistingQuantities={ExistingQuantities.current} Index={index} outerAutoFill={autoFill}/>
                 ))}
               </tbody>
             </table>
@@ -344,15 +409,21 @@ function EditInvoiceForm(){
           <div>
             <div>
               <label>اجمالي المبلغ</label>
-              <input type="text" defaultValue={InvoiceInfo.TotalPrice} ref={TotalPriceFieldRef}></input>
+              <input type="number" defaultValue={InvoiceInfo.TotalPrice} ref={TotalPriceFieldRef} disabled/>
             </div>
             <div>
               <label>المدفوع</label>
-              <input type="text" defaultValue={InvoiceInfo.Paid} ref={PaidFieldRef}></input>
+              <input type="number" defaultValue={InvoiceInfo.Paid} ref={PaidFieldRef} onChange={(event) => {
+                TransferredToAccountFieldRef.current.value = Number(TotalPriceFieldRef.current.value) - Number(PaidFieldRef.current.value);
+                checkPaid();
+              }}/>
             </div>
             <div>
-              <label>المضاف لحساب الدين</label>
-              <input type="text" defaultValue={InvoiceInfo.TransferredToAccount} ref={TransferredToAccountFieldRef}></input>
+              <label>محول لحساب الدين</label>
+              <input type="number" defaultValue={InvoiceInfo.TransferredToAccount} ref={TransferredToAccountFieldRef} onChange={(event) => {
+                PaidFieldRef.current.value = Number(TotalPriceFieldRef.current.value) - Number(TransferredToAccountFieldRef.current.value);
+                checkPaid();
+              }}/>
             </div>
           </div>
           <div>

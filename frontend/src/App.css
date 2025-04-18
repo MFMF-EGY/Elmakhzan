@@ -3,6 +3,7 @@
   --table-header-bgcolor:#203663;
   --button-hover-bgcolor: #203663;
   --table-row-selected-bgcolor: #a6d8ff;
+  --invalid-field-color: hsl(0, 100%, 83%);
 }
 
 .App {
@@ -108,6 +109,22 @@ main{
 
 .Table:not(.InputTable) tr:hover:not(.Selected-row) {background-color: #ddd;}
 
+.Invalid-field-data{
+  border: 1px var(--invalid-field-color) solid !important;
+  color: var(--invalid-field-color) !important;
+}
+
+.Field-lock{
+  background-color: transparent;
+  background-size: contain;
+  border: none;
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  margin-inline-start: -20px;
+  margin-top: 5px;
+}
+
 tr.Selected-row {
   background-color: var(--table-row-selected-bgcolor) !important; 
 }
@@ -144,8 +161,15 @@ tr.Selected-row {
 
 input[type=text], input[type=number]{
   display: inline-block;
+  -moz-appearance: textfield;
   border: 1px solid #ccc;
   box-sizing: border-box;
+}
+
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .Form-container{

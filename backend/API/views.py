@@ -207,6 +207,11 @@ class ProcessRequest:
         ProductQuantities = Cursor.dictfetchall()
         ProductInfo["Product_Quantity_Table"] = ProductQuantities
         return {"StatusCode": 0,"Data": ProductInfo}
+    def GetProductsQuantities(Cursor, RequestList, ProductsIDs):
+        StoreID = RequestList["StoreID"]
+        Cursor.execute(f"SELECT Quantity FROM Product_Quantity_Table WHERE Store_ID={StoreID} AND Product_ID IN ({','.join(map(str, ProductsIDs))});")
+        ProductQuantities = Cursor.fetchall()
+        return {"StatusCode":0,"Data":ProductQuantities}
     def Sell(ProjectDBConnector, Cursor, RequestList, Orders, RequiredAmount):
         StoreID, ClientName, Paid = RequestList["StoreID"], RequestList["ClientName"], RequestList["Paid"]
 
@@ -803,7 +808,26 @@ class CheckValidation:
         ProjectDBConnector = connections[f"Project{ProjectID}"]
         Cursor = connections[f"Project{ProjectID}"].cursor()
         return ProcessRequest.GetProductInfo(Cursor, RequestList)
-
+    
+    def GetProductsQuantities(RequestList):
+        try:
+            ProjectID, StoreID = RequestList["ProjectID"], RequestList["StoreID"]
+        except:
+            return {"StatusCode":ErrorCodes.MissingVariables,"Data":""}
+        i = 0
+        ProductsIDs = []
+        while True:
+            if (ProductID := RequestList.get(f"ProductsIDs[{i}]")) == None: break
+            if not isintstr(ProductID): return {"StatusCode":ErrorCodes.InvalidDataType,"Variable":f"ProductsIDs[{i}]"}
+            ProductsIDs.append(ProductID)
+            i+=1
+        if len(ProductsIDs) == 0: return {"StatusCode":ErrorCodes.MissingVariables,"Variable":"ProductsIDs"}
+        if not isintstr(ProjectID): return {"StatusCode":ErrorCodes.InvalidDataType,"Data":""}
+        if ProjectsDBsConnectors.get(int(ProjectID)) == None: return {"StatusCode":ErrorCodes.ValueNotFound,"Data":""}
+        Cursor = connections[f"Project{ProjectID}"].cursor()
+        if not isintstr(StoreID): return {"StatusCode":ErrorCodes.InvalidDataType,"Data":""}
+        return ProcessRequest.GetProductsQuantities(Cursor, RequestList, ProductsIDs)
+    
     def Sell(RequestList):
         try:
             ProjectID, StoreID, ClientName, Paid = (
@@ -1232,6 +1256,8 @@ def StartRequestProcessing(Request):
             Response = CheckValidation.EditProductInfo(RequestList)
         case "GetProductInfo":
             Response = CheckValidation.GetProductInfo(RequestList)
+        case "GetProductsQuantities":
+            Response = CheckValidation.GetProductsQuantities(RequestList)
         case "Sell":
             Response = CheckValidation.Sell(RequestList)
         case "Purchase":

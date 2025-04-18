@@ -113,8 +113,9 @@ function CreateInvoiceForm(){
   const { ProjectID, StoreID } = useContext(GlobalContext);
   const { UpdateTab, setUpdateTab, setOpendForm } = useContext(PurchaseTabContext);
   
-  const CreateInvoiceSellerNameRef = useRef();
-  const CreateInvoicePaidRef = useRef();
+  const SellerNameFieldRef = useRef();
+  const PaidFieldRef = useRef();
+  const TotalPriceFieldRef = useRef();
   const Itemslist = useRef(Array.from({ length: 12 }, () => ({
     ProductName: "",
     ProductID: "",
@@ -125,19 +126,29 @@ function CreateInvoiceForm(){
     UnitPrice: "",
     Price: ""
   })));
+  const ExistingQuantities = useRef([]);
 
+  const autoFill = () => {
+    TotalPriceFieldRef.current.value = Itemslist.current.reduce((acc, item) => {
+      return acc + (item.Quantity * item.UnitPrice);
+    },0);
+    checkPaid();
+  }
+  const checkPaid = () => {
+    PaidFieldRef.current.className = Number(PaidFieldRef.current.value) > Number(TotalPriceFieldRef.current.value) ? "Invalid-field-data" : "";
+  }
   const createInvoice = async (event) => {
     var RequestParams = {
       RequestType: "Purchase",
       ProjectID: ProjectID,
       StoreID: StoreID,
-      SellerName: CreateInvoiceSellerNameRef.current.value,
+      SellerName: SellerNameFieldRef.current.value,
       Orders: Itemslist.current.map((item) => (item.ProductID !== "" && item.Quantity !== "" && item.UnitPrice !== "" ? {
         ProductID: item.ProductID,
         Quantity: item.Quantity,
         UnitPrice: item.UnitPrice,
       }: null)),
-      Paid: CreateInvoicePaidRef.current.value
+      Paid: PaidFieldRef.current.value
     }
     await axios.get(API_URL, {params: RequestParams})
       .then((response) => {
@@ -159,7 +170,12 @@ function CreateInvoiceForm(){
         <div>
           <div>
             <label>اسم البائع</label>
-            <input type="text" ref={CreateInvoiceSellerNameRef}></input>
+            <input type="text" ref={SellerNameFieldRef} onBlur={(event) => {
+              SellerNameFieldRef.current.className = SellerNameFieldRef.current.value === "" ? "Invalid-field-data" : "";
+            }}
+            onChange={(event) =>{
+              SellerNameFieldRef.current.className = "";
+            }}/>
           </div>
         </div>
         <div>
@@ -179,15 +195,19 @@ function CreateInvoiceForm(){
             </thead>
             <tbody>
               {Itemslist.current.map((item, index) => (
-                  <InvoiceItem ItemsList={Itemslist} Index={index}/>
+                  <InvoiceItem InvoiceType="Purchase" ItemsList={Itemslist.current} ExistingQuantities={ExistingQuantities.current} Index={index} outerAutoFill={autoFill}/>
               ))}
             </tbody>
           </table>
         </div>
         <div>
           <div>
+            <label>المبلغ الكلي</label>
+            <input type="number" ref={TotalPriceFieldRef} disabled/>
+          </div>
+          <div>
             <label>المدفوع</label>
-            <input type="text" ref={CreateInvoicePaidRef}></input>
+            <input type="number" ref={PaidFieldRef} onChange={(event) => checkPaid()}/>
           </div>
         </div>
         <div>
@@ -208,6 +228,7 @@ function EditInvoiceForm(){
   const [ Loading , setLoading ] = useState(true);
   const [ InvoiceInfo, setInvoiceInfo ] = useState({});
   const SellerNameFieldRef = useRef();
+  const TotalPriceFieldRef = useRef();
   const PaidFieldRef = useRef();
   const Itemslist = useRef(Array.from({ length: 12 }, () => ({
     ProductName: "",
@@ -219,6 +240,17 @@ function EditInvoiceForm(){
     UnitPrice: "",
     Price: ""
   })));
+  const ExistingQuantities = useRef([]);
+
+  const autoFill = () => {
+    TotalPriceFieldRef.current.value = Itemslist.current.reduce((acc, item) => {
+      return acc + (item.Quantity * item.UnitPrice);
+    },0);
+    checkPaid();
+  }
+  const checkPaid = () => {
+    PaidFieldRef.current.className = Number(PaidFieldRef.current.value) > Number(TotalPriceFieldRef.current.value) ? "Invalid-field-data" : "";
+  }
 
   const fetchInvoice = async () => {
     var RequestParams = {
@@ -243,12 +275,39 @@ function EditInvoiceForm(){
           setInvoiceInfo({
             InvoiceID: response.data.Data.Invoice_ID,
             SellerName: response.data.Data.Seller_Name,
+            TotalPrice: response.data.Data.Total_Price,
             Paid: response.data.Data.Paid,
           });
-          setLoading(false);
+          fetchExistingQuantites();
         }else{
           console.log(response.data);
           setLoading("error");
+        }
+      })
+      .catch((error) => {
+        console.log(error);
+        setLoading("error");
+      })
+  }
+
+  const fetchExistingQuantites = async () => {
+    let RequestParams = {
+      RequestType: "GetProductsQuantities",
+      ProjectID: ProjectID,
+      StoreID: StoreID,
+    }
+    let ProductIDs = Itemslist.current.map((item) => item.ProductID);
+    for (let i = 0; i < ProductIDs.length; i++){
+      RequestParams[`ProductsIDs[${i}]`] = ProductIDs[i] ? ProductIDs[i] : undefined;
+    }
+    await axios.get(API_URL, {params: RequestParams})
+      .then((response) => {
+        if (!response.data.StatusCode){
+          ExistingQuantities.current = response.data.Data;
+          setLoading(false)
+        }else{
+          console.log(response.data);
+          setLoading("error")
         }
       })
       .catch((error) => {
@@ -299,7 +358,12 @@ function EditInvoiceForm(){
             </div>
             <div>
               <label>اسم البائع</label>
-              <input type="text" defaultValue={InvoiceInfo.SellerName} ref={SellerNameFieldRef}></input>
+              <input type="text" defaultValue={InvoiceInfo.SellerName} ref={SellerNameFieldRef} onBlur={(event) => {
+                SellerNameFieldRef.current.className = SellerNameFieldRef.current.value === "" ? "Invalid-field-data" : "";
+              }}
+              onChange={(event) =>{
+                SellerNameFieldRef.current.className = "";
+              }}/>
             </div>
           </div>
           <div>
@@ -319,15 +383,19 @@ function EditInvoiceForm(){
               </thead>
               <tbody>
                 {Itemslist.current.map((item, index) => (
-                  <InvoiceItem ItemsList={Itemslist} Index={index}/>
+                  <InvoiceItem InvoiceType="Purchase" ItemsList={Itemslist.current} ExistingQuantities={ExistingQuantities.current} Index={index} outerAutoFill={autoFill}/>
                 ))}
               </tbody>
             </table>
           </div>
           <div>
             <div>
+              <label>المبلغ الكلي</label>
+              <input type="number" defaultValue={InvoiceInfo.TotalPrice} ref={TotalPriceFieldRef} disabled/>
+            </div>
+            <div>
               <label>المدفوع</label>
-              <input type="text" defaultValue={InvoiceInfo.Paid} ref={PaidFieldRef}></input>
+              <input type="number" defaultValue={InvoiceInfo.Paid} ref={PaidFieldRef} onChange={(event) => checkPaid()}/>
             </div>
           </div>
           <div>
