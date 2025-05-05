@@ -1,6 +1,6 @@
 import { useState, useEffect, useContext, useRef } from "react";
 import axios from "axios";
-import SuggestionsCell from "./SuggestionsCell.js";
+import SuggestionsInput from "./SuggestionsInput.js";
 import Link from "./link.ico";
 import BrokenLink from "./broken-link.ico";
 import { GlobalContext } from "./App.js";
@@ -97,7 +97,7 @@ export function InvoiceItem({InvoiceType, ItemsList, ExistingQuantities, Index, 
     <tr>
       <td>{Index+1}</td>
       <td>
-        <SuggestionsCell Value={ItemInfo.ProductName}
+        <SuggestionsInput Value={ItemInfo.ProductName}
           Suggestions={Suggestions.map(suggestion => suggestion.Product_Name + " - " + suggestion.Trademark + " - " + suggestion.Manufacture_Country)}
           onChange={(event) => {
             let MatchedSuggestion = Suggestions.filter(suggestion =>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 
-function SuggestionsCell({ Value, Suggestions, onChange, onSelect }) {
+function SuggestionsInput({ Value, Suggestions, onChange, onSelect }) {
 
   const [showSuggestions, setShowSuggestions] = useState(false);
   const CellRef = useRef();
@@ -43,4 +43,4 @@ function SuggestionsCell({ Value, Suggestions, onChange, onSelect }) {
     </div>
   );
 }
-export default SuggestionsCell;
+export default SuggestionsInput;
