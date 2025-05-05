@@ -7,6 +7,7 @@ import SellingTabContent from './SellingTabContent.js';
 import PurchaseTabContent from './PurchaseTabContent.js';
 import TransitionTabContent from './TransitionTabContent.js';
 import DebtsAccountsTabContent from './DebtsAccountsTabContent.js';
+import QuantityAdjustmentsTabContent from './QuantityAdjustmentsTabContent.js';
 
 export const API_URL = 'http://0.0.0.0:8000/apis/v1.0/commercial';
 export const GlobalContext = createContext();
@@ -23,6 +24,7 @@ function App() {
   const TransitionTabContentRef = useRef();
   const ProductsTabContentRef = useRef();
   const DebtsAccountsTabContentRef = useRef();
+  const QuantityAdjustmentsTabContentRef = useRef();
   const CurrentTabContent = useRef(MainTableTabContentRef);
 
   useEffect(() => {
@@ -54,6 +56,7 @@ function App() {
                 <li className="Tab" onClick={(event) => changeTab(event,TransitionTabContentRef)}>مستندات التحويل</li>
                 <li className="Tab" onClick={(event) => changeTab(event,ProductsTabContentRef)}>قائمة المنتجات</li>
                 <li className="Tab" onClick={(event) => changeTab(event,DebtsAccountsTabContentRef)}>حسابات الديون</li>
+                <li className="Tab" onClick={(event) => changeTab(event,QuantityAdjustmentsTabContentRef)}>تعديل الكميات</li>
               </ul>
             </div>
             <div className="Tab-contents">
@@ -63,6 +66,7 @@ function App() {
               <TransitionTabContent ref={TransitionTabContentRef}/>
               <ProductsTabContent ref={ProductsTabContentRef}/>
               <DebtsAccountsTabContent ref={DebtsAccountsTabContentRef}/>
+              <QuantityAdjustmentsTabContent ref={QuantityAdjustmentsTabContentRef}/>
             </div>
             <div className="Form-container" ></div>
           </>

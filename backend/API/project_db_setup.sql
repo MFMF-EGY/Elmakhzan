@@ -90,14 +90,14 @@ create table Transition_Items(
     Product_ID int,
     Quantity int
 );
-create table Products_Quantity_Adjustments(
+create table Products_Quantities_Adjustments(
     Operation_ID int NOT NULL AUTO_INCREMENT,
     Store_ID int,
-    DateTime datetime default CURRENT_TIME,
+    Operation_Type varchar(20),
     Product_ID int,
-    Previous_Quantity float,
-    Current_Quantity float,
-    Notes TEXT,
+    DateTime datetime default CURRENT_TIME,
+    Quantity float,
+    Note TEXT,
     PRIMARY KEY (Operation_ID)
 );
 create table Accounts_Operations(

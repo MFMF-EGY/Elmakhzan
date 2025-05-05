@@ -76,11 +76,7 @@ def SetupProjectsDBsConnectors():
         ProjectsDBsConnectors[ProjectID[0]] = 1
 
 SetupProjectsDBsConnectors()
-global ProjectDBConnector
-global GeneratedSql
-global StoreID
 GeneratedSql = ""
-StoreID = 0
 class ErrorCodes:
     InvalidDataType = 1
     MissingVariables = 2
@@ -98,7 +94,13 @@ class ErrorCodes:
     ExceededMaximum = 14
     InvalidValue = 15
     NonexistantProduct = 16
-#TODO: Enhance error handling
+def isnumberstr(value):
+    try:
+        float(value)
+        return True
+    except:
+        return False
+    
 def isintstr(value):
     try:
         int(value)
@@ -133,7 +135,7 @@ class ProcessRequest:
             'ATOMIC_REQUESTS': False,
         }
         NewDBCursor = connections[f"Project{ProjectID}"].cursor()
-        for query in ProjectDBStructure:
+        for query in ProjectDBStructure[:-1]:
             NewDBCursor.execute(query)
         connections[f"Project{ProjectID}"].commit()
         NewDBCursor.close()
@@ -180,7 +182,7 @@ class ProcessRequest:
             f"Retail_Price,Quantity_Unit,Partial_Quantity_Precision) VALUES ('{ProductName}','{Trademark}','{ManufactureCountry}',"
             f"{PurchasePrice},{WholesalePrice},{RetailPrice},'{QuantityUnit}',{PartialQuantityPrecision});")
         for StoreID in StoresIDs:
-            Cursor.execute(f"INSERT INTO Product_Quantity_Table(Store_ID,Product_ID,Quantity) VALUES ({StoreID},LAST_INSERT_ID(),0)")
+            Cursor.execute(f"INSERT INTO Product_Quantity_Table(Store_ID,Product_ID,Quantity) VALUES ({StoreID[0]},LAST_INSERT_ID(),0)")
         ProjectDBConnector.commit()
         return {"StatusCode": 0,"Data": "OK"}
     def EditProductInfo(ProjectDBConnector, Cursor, RequestList):
@@ -395,6 +397,17 @@ class ProcessRequest:
         Cursor.execute(f"DELETE FROM Transition_Documents WHERE Document_ID={DocumentID};")
         ProjectDBConnector.commit()
         return {"StatusCode":0,"Data":"OK"}
+    def DeleteAdjustmentOperation(ProjectDBConnector, Cursor, RequestList):
+        OperationID = RequestList["OperationID"]
+        Cursor.execute(f"SELECT Store_ID,Product_ID,Operation_Type,Quantity FROM Products_Quantities_Adjustments WHERE Operation_ID={OperationID};")
+        StoreID, ProductID, OperationType, Quantity = Cursor.fetchone()
+        if OperationType in ["Increase", "Found", "Maintenance"]:
+            Cursor.execute(f"UPDATE Product_Quantity_Table SET Quantity = Quantity - {Quantity} WHERE Store_ID={StoreID} AND Product_ID={ProductID};")
+        else:
+            Cursor.execute(f"UPDATE Product_Quantity_Table SET Quantity = Quantity + {Quantity} WHERE Store_ID={StoreID} AND Product_ID={ProductID};")
+        Cursor.execute(f"DELETE FROM Products_Quantities_Adjustments WHERE Operation_ID={OperationID};")
+        ProjectDBConnector.commit()
+        return {"StatusCode":0,"Data":"OK"}
     def AddToAccount(RequestList):
         PersonID = RequestList["PersonID"]
         Description = RequestList["Description"]
@@ -465,9 +478,8 @@ class ProcessRequest:
         if Filters:
             Sql += " AND "
         for Filter in Filters:
-            key = list(Filter.keys())[0]
-            value = Filter[key]
-            Sql += f"{key}='{value}'"
+            value = RequestList[Filter]
+            Sql += f"{Filter}='{value}'"
         Cursor.execute(Sql)
         return {"StatusCode":0,"Data":Cursor.dictfetchall()}
     
@@ -511,22 +523,33 @@ class ProcessRequest:
         DocumentInfo["Items"] = Cursor.dictfetchall()
         return {"StatusCode":0,"Data":DocumentInfo}
     
-    def AdjustProductQuantity(RequestList):
-        StoreID, ProductID, CurrentQuantity, Notes = (
-            RequestList["StoreID"], RequestList["ProductID"], RequestList["CurrentQuantity"], RequestList["Notes"])
-        Cursor.execute(f"SELECT * FROM Stores_Table WHERE Store_ID={StoreID};")
-        if Cursor.fetchone() is None: return {"StatusCode":ErrorCodes.UnregisteredStore,"Data":""}
-        Cursor.execute(f"SELECT * FROM Products_Table WHERE Product_ID={ProductID};")
-        if Cursor.fetchone() is None: return {"StatusCode":ErrorCodes.UnregisteredProduct,"Data":""}
-        Cursor.execute(f"SELECT Quantity FROM Product_Quantity_Table WHERE Store_ID={StoreID} AND Product_ID={ProductID};")
-        PreviousQuantity = Cursor.fetchone()['Quantity']
-        Cursor.execute(f"INSERT INTO Products_Quantity_Adjustments(Store_ID,Product_ID,Previous_Quantity,"
-                       f"Current_Quantity,Notes) VALUES ({StoreID},{ProductID},{PreviousQuantity},{CurrentQuantity},"
-                       f"'{Notes}');")
-        Cursor.execute(f"UPDATE Product_Quantity_Table SET Quantity={CurrentQuantity} WHERE Store_ID={StoreID} AND Product_ID={ProductID};")
+    def AdjustProductQuantity(ProjectDBConnector, Cursor, RequestList):
+        StoreID, OperationType, ProductID, Quantity, Note = (
+            RequestList["StoreID"], RequestList["OperationType"], RequestList["ProductID"], RequestList["Quantity"], RequestList["Note"])
+        match OperationType:
+            case "Increase" | "Found" | "Maintenance":
+                Cursor.execute(f"UPDATE Product_Quantity_Table SET Quantity = Quantity + {Quantity} WHERE Store_ID={StoreID} AND Product_ID={ProductID};")
+            case "Decrease" | "Damage" | "Lost":
+                Cursor.execute(f"SELECT Quantity FROM Product_Quantity_Table WHERE Store_ID={StoreID} AND Product_ID={ProductID};")
+                if Cursor.fetchone()[0] - float(Quantity) < 0:
+                    return {"StatusCode":ErrorCodes.InsufficientQuantity,"ProductID":ProductID}
+                Cursor.execute(f"UPDATE Product_Quantity_Table SET Quantity = Quantity - {Quantity} WHERE Store_ID={StoreID} AND Product_ID={ProductID};")
+        Cursor.execute(f"INSERT INTO Products_Quantities_Adjustments(Store_ID,Product_ID,Operation_Type,Quantity,Note) VALUES ('{StoreID}','{ProductID}','{OperationType}','{Quantity}','{Note}');")
         ProjectDBConnector.commit()
         return {"StatusCode":0,"Data":"OK"}
-
+    def SearchAdjustmentOperations(Cursor, RequestList):
+        StoreID = RequestList["StoreID"]
+        Filters = list(RequestList.keys())
+        Filters.remove("RequestType")
+        Filters.remove("ProjectID")
+        Filters.remove("StoreID")
+        Sql = f"SELECT * FROM Products_Quantities_Adjustments JOIN Products_Table ON Products_Quantities_Adjustments.Product_ID = Products_Table.Product_ID WHERE Store_ID={StoreID}"
+        for Filter in Filters:
+            Sql += " AND "
+            value = RequestList[Filter]
+            Sql += f"{Filter} LIKE '%{value}%'"
+        Cursor.execute(Sql)
+        return {"StatusCode":0,"Data":Cursor.dictfetchall()}
 class SearchFiltersValidation:
     def SellingInvoices(RequestList):
         for Filter in RequestList.keys():
@@ -644,7 +667,7 @@ def GetOrders(Cursor, RequestList: dict):
         if (RequiredPrecision := Cursor.fetchone()) == None:
             return {"StatusCode":ErrorCodes.NonexistantProduct,"Variable":f"Orders[{i}][ProductID]"}, 0
         QuantityPrecision = len(str(Order["Quantity"])) - str(float(Order["Quantity"])).find(".") - 1
-        if QuantityPrecision > RequiredPrecision[0]:
+        if QuantityPrecision > 0 and RequiredPrecision[0] == 0:
             return {"StatusCode":ErrorCodes.InvalidPrecision,"Data":""}, 0
         if not Order["ProductID"] in OrdersIDs:
             Orders.append(Order)
@@ -789,9 +812,9 @@ class CheckValidation:
         if len(ProductName) == 0: return {"StatusCode":ErrorCodes.EmptyValue,"Variable":"ProductName"}
         if len(Trademark) == 0: return {"StatusCode":ErrorCodes.EmptyValue,"Variable": "Trademark"}
         if len(ManufactureCountry) == 0: return {"StatusCode":ErrorCodes.EmptyValue,"Variable": "ManufactureCountry"}
-        if int(PurchasePrice) < 0: return {"StatusCode":ErrorCodes.InvalidValue,"Data":""}
-        if int(WholesalePrice) < 0: return {"StatusCode":ErrorCodes.InvalidValue,"Data":""}
-        if int(RetailPrice) < 0: return {"StatusCode":ErrorCodes.InvalidValue,"Data":""}
+        if float(PurchasePrice) < 0: return {"StatusCode":ErrorCodes.InvalidValue,"Data":""}
+        if float(WholesalePrice) < 0: return {"StatusCode":ErrorCodes.InvalidValue,"Data":""}
+        if float(RetailPrice) < 0: return {"StatusCode":ErrorCodes.InvalidValue,"Data":""}
         if len(QuantityUnit) == 0: return {"StatusCode":ErrorCodes.EmptyValue,"Variable":"QuantityUnit"}
         if int(PartialQuantityPrecision) < 0: return {"StatusCode":ErrorCodes.InvalidValue,"Data":""}
         return ProcessRequest.EditProductInfo(ProjectDBConnector, Cursor, RequestList)
@@ -1047,7 +1070,20 @@ class CheckValidation:
         if Cursor.fetchone() == None:
             return {"StatusCode":ErrorCodes.ValueNotFound,"Variable":"DocumentID"}
         return ProcessRequest.DeleteTransitionDocument(ProjectDBConnector, Cursor, RequestList)
-    
+    def DeleteAdjustmentOperation(RequestList):
+        try:
+            ProjectID, OperationID = RequestList["ProjectID"], RequestList["OperationID"]
+        except:
+            return {"StatusCode":ErrorCodes.MissingVariables,"Data":""}
+        if not isintstr(ProjectID): return {"StatusCode":ErrorCodes.InvalidDataType,"Data":""}
+        if ProjectsDBsConnectors.get(int(ProjectID)) == None: return {"StatusCode":ErrorCodes.ValueNotFound,"Data":""}
+        if not isintstr(OperationID): return {"StatusCode":ErrorCodes.InvalidDataType,"Data":""}
+        ProjectDBConnector = connections[f"Project{ProjectID}"]
+        Cursor = ProjectDBConnector.cursor()
+        Cursor.execute(f"SELECT Operation_ID FROM Products_Quantities_Adjustments WHERE Operation_ID={OperationID};")
+        if Cursor.fetchone() == None:
+            return {"StatusCode":ErrorCodes.ValueNotFound,"Variable":"OperationID"}
+        return ProcessRequest.DeleteAdjustmentOperation(ProjectDBConnector, Cursor, RequestList)
     def AddToAccount(RequestList):
         try:
             ProjectID, PersonID, Description, Amount = (
@@ -1075,7 +1111,7 @@ class CheckValidation:
         if ProjectID not in ProjectsDBsConnectors.keys(): return {"StatusCode":ErrorCodes.ValueNotFound,"Data":""}
         if not isintstr(PersonID): return {"StatusCode":ErrorCodes.InvalidDataType,"Data":""}
         
-        if not isintstr(Amount, float): return {"StatusCode":ErrorCodes.InvalidDataType,"Data":""}
+        if not isintstr(Amount): return {"StatusCode":ErrorCodes.InvalidDataType,"Data":""}
         if len(Description)==0: return {"StatusCode":ErrorCodes.InvalidValue,"Data":""}
         if Amount <= 0: return {"StatusCode":ErrorCodes.InvalidValue,"Data":""}
         global Cursor
@@ -1208,23 +1244,49 @@ class CheckValidation:
     
     def AdjustProductQuantity(RequestList):
         try:
-            ProjectID, StoreID, ProductID, CurrentQuantity, Notes = (RequestList["ProjectID"],
-                RequestList["StoreID"], RequestList["ProductID"], RequestList["CurrentQuantity"], RequestList["Notes"])
+            ProjectID, StoreID, OperationType, ProductID, Quantity, Note = (RequestList["ProjectID"],
+                RequestList["StoreID"], RequestList["OperationType"], RequestList["ProductID"], RequestList["Quantity"], RequestList["Note"])
         except:
             return {"StatusCode":ErrorCodes.MissingVariables,"Data":""}
-        if ProjectID not in ProjectsDBsConnectors.keys(): return {"StatusCode":ErrorCodes.ValueNotFound,"Data":""}
-        global Cursor
-        global ProjectDBConnector
-        ProjectDBConnector = ProjectsDBsConnectors[ProjectID]
-        Cursor = ProjectDBConnector.cursor(dictionary=True, buffered=True)
-        if not isintstr(StoreID): return {"StatusCode":ErrorCodes.InvalidDataType,"Data":""}
-        if not isintstr(ProductID): return {"StatusCode":ErrorCodes.InvalidDataType,"Data":""}
-        if not isintstr(CurrentQuantity): return {"StatusCode":ErrorCodes.InvalidDataType,"Data":""}
+        if ProjectsDBsConnectors.get(int(ProjectID)) == None: return {"StatusCode":ErrorCodes.ValueNotFound,"Data":""}
+        ProjectDBConnector = connections[f"Project{ProjectID}"]
+        Cursor = ProjectDBConnector.cursor()
+        if not isintstr(StoreID): return {"StatusCode":ErrorCodes.InvalidDataType,"Variable":"StoreID"}
+        if not isintstr(ProductID): return {"StatusCode":ErrorCodes.InvalidDataType,"Variable":"ProductID"}
+        if not isnumberstr(Quantity): return {"StatusCode":ErrorCodes.InvalidDataType,"Variable":"Quantity"}
+        if OperationType not in ["Increase","Decrease","Damage","Lost","Found","Maintenance"]: return {"StatusCode":ErrorCodes.InvalidValue,"Variable":"OperationType"}
+        Cursor.execute(f"SELECT Store_ID FROM Stores_Table WHERE Store_ID={StoreID};")
+        if Cursor.fetchone() is None:
+            return {"StatusCode":ErrorCodes.UnregisteredStore,"Data":""}
         Cursor.execute(f"SELECT Partial_Quantity_Precision FROM Products_Table WHERE Product_ID={ProductID};")
-        RequiredPrecision = Cursor.fetchone()["Partial_Quantity_Precision"]
-        QuantityPrecision = len(str(CurrentQuantity)) - str(CurrentQuantity).index(".") - 1
-        if QuantityPrecision > RequiredPrecision: return {"StatusCode":ErrorCodes.InvalidPrecision,"Data":""}
-        return ProcessRequest.AdjustProductQuantity(RequestList)
+        RequiredPrecision = Cursor.fetchone()
+        QuantityPrecision = QuantityPrecision = len(Quantity) - str(float(Quantity)).find(".") - 1
+        if QuantityPrecision > 0 and RequiredPrecision == 0: return {"StatusCode":ErrorCodes.InvalidPrecision,"Variable":"Quantity"}
+        return ProcessRequest.AdjustProductQuantity(ProjectDBConnector, Cursor, RequestList)
+    
+    def SearchAdjustmentOperations(RequestList):
+        try:
+            ProjectID, StoreID = RequestList["ProjectID"], RequestList["StoreID"]
+        except:
+            return {"StatusCode":ErrorCodes.MissingVariables,"Data":""}
+        if not isintstr(ProjectID): return {"StatusCode":ErrorCodes.InvalidDataType,"Data":""}
+        if ProjectsDBsConnectors.get(int(ProjectID)) == None: return {"StatusCode":ErrorCodes.ValueNotFound,"Data":""}
+        if not isintstr(StoreID): return {"StatusCode":ErrorCodes.InvalidDataType,"Data":""}
+        Cursor = connections[f"Project{ProjectID}"].cursor()
+        Cursor.execute(f"SELECT Store_ID FROM Stores_Table WHERE Store_ID={StoreID};")
+        if Cursor.fetchone() == None:
+            return {"StatusCode":ErrorCodes.ValueNotFound,"Variable":"StoreID"}
+        for Filter in RequestList.keys():
+            match Filter:
+                case "Quantity":
+                    if not isintstr(RequestList[Filter]): return {"StatusCode":ErrorCodes.InvalidDataType,"Variable":Filter}
+                case "DateTime":
+                    if not datetime.strptime(RequestList[Filter], "%y-%m-%d %H-%M-%S"): return {"StatusCode":ErrorCodes.InvalidValue,"Variable":"DateTime"}
+                case "RequestType" | "OperationType" | "ProjectID" | "StoreID" | "Product_Name" | "Trademark" | "Manufacture_Country" | "Note":
+                    pass
+                case _:
+                    return {"StatusCode":ErrorCodes.InvalidFilter,"Variable":Filter}
+        return ProcessRequest.SearchAdjustmentOperations(Cursor, RequestList)
 def SanatizeRequest(RequestList):
     if isinstance(RequestList, list):
         for i in range(len(RequestList)):
@@ -1282,6 +1344,8 @@ def StartRequestProcessing(Request):
             Response = CheckValidation.DeleteRefundInvoice(RequestList)
         case "DeleteTransitionDocument":
             Response = CheckValidation.DeleteTransitionDocument(RequestList)
+        case "DeleteAdjustmentOperation":
+            Response = CheckValidation.DeleteAdjustmentOperation(RequestList)
         case "AddToAccount":
             Response = CheckValidation.AddToAccount(RequestList)
         case "DeductFromAccount":
@@ -1292,6 +1356,8 @@ def StartRequestProcessing(Request):
             Response = CheckValidation.SearchInvoices(RequestList)
         case "SearchTransitionDocuments":
             Response = CheckValidation.SearchTransitionDocuments(RequestList)
+        case "SearchAdjustmentOperations":
+            Response = CheckValidation.SearchAdjustmentOperations(RequestList)
         case "GetInvoice":
             Response = CheckValidation.GetInvoice(RequestList)
         case "GetTransitionDocument":

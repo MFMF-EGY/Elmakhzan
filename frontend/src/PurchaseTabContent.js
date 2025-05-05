@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, createContext, useContext, use } from 'react';
+import { useState, useEffect, useRef, createContext, useContext } from 'react';
 import axios from 'axios';
 import { GlobalContext } from './App.js';
 import { InvoiceItem } from './ItemComponents.js'
@@ -12,7 +12,7 @@ function PurchaseTabContent({ref}){
   const [ SearchParam, setSearchParam ] = useState({
     InvoiceID: "",
     SellerName: "",
-    DataTime: "",
+    DateTime: "",
     TotalPrice: "",
     Paid:""
   });
@@ -42,7 +42,7 @@ function PurchaseTabContent({ref}){
     };
     if (SearchParam.InvoiceID){ RequestParams.Invoice_ID = SearchParam.InvoiceID; }
     if (SearchParam.SellerName){ RequestParams.Seller_Name = SearchParam.SellerName; }
-    if (SearchParam.DataTime){ RequestParams.Data_Time = SearchParam.DataTime; }
+    if (SearchParam.DateTime){ RequestParams.Date_Time = SearchParam.DateTime; }
     if (SearchParam.TotalPrice){ RequestParams.Total_Price = SearchParam.TotalPrice; }
     if (SearchParam.Paid){ RequestParams.Paid = SearchParam.Paid; }
     await axios.get(API_URL, {params: RequestParams})
@@ -262,7 +262,7 @@ function EditInvoiceForm(){
     await axios.get(API_URL, {params: RequestParams})
       .then((response) => {
         if (!response.data.StatusCode){
-          response.data.Data.Items.map((item, index) => {
+          response.data.Data.Items.forEach((item, index) => {
             Itemslist.current[index].ProductName = item.Product_Name;
             Itemslist.current[index].ProductID = item.Product_ID;
             Itemslist.current[index].Trademark = item.Trademark;

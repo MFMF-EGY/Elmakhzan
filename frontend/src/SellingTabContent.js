@@ -12,7 +12,7 @@ function SellingTabContent({ref}){
   const [ SearchParam, setSearchParam ] = useState({
     InvoiceID: "",
     ClientName: "",
-    DataTime: "",
+    DateTime: "",
     TotalPrice: "",
     Paid:""
   });
@@ -43,7 +43,7 @@ function SellingTabContent({ref}){
     };
     if (SearchParam.InvoiceID){ RequestParams.Invoice_ID = SearchParam.InvoiceID; }
     if (SearchParam.ClientName){ RequestParams.Seller_Name = SearchParam.SellerName; }
-    if (SearchParam.DataTime){ RequestParams.Data_Time = SearchParam.DataTime; }
+    if (SearchParam.DateTime){ RequestParams.Date_Time = SearchParam.DateTime; }
     if (SearchParam.TotalPrice){ RequestParams.Total_Price = SearchParam.TotalPrice; }
     if (SearchParam.Paid){ RequestParams.Paid = SearchParam.Paid; }
     await axios.get(API_URL, {params: RequestParams})
@@ -146,7 +146,7 @@ function CreateInvoiceForm(){
   const checkPaid = () => {
     PaidFieldRef.current.className = Number(PaidFieldRef.current.value) > Number(TotalPriceFieldRef.current.value) ? "Invalid-field-data" : "";
   }
-  const createInvoice = async (event) => {
+  const createInvoice = async () => {
     var RequestParams = {
       RequestType: "Sell",
       ProjectID: ProjectID,
@@ -279,7 +279,7 @@ function EditInvoiceForm(){
     await axios.get(API_URL, {params: RequestParams})
       .then((response) => {
         if (!response.data.StatusCode){
-          response.data.Data.Items.map((item, index) => {
+          response.data.Data.Items.forEach((item, index) => {
             Itemslist.current[index].ProductName = item.Product_Name;
             Itemslist.current[index].ProductID = item.Product_ID;
             Itemslist.current[index].Trademark = item.Trademark;
