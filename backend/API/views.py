@@ -282,26 +282,33 @@ class ProcessRequest:
         return {"StatusCode":0,"Data":"OK"}
     def EditSellingInvoice(ProjectDBConnector, Cursor, RequestList, StoreID, Orders, TotalPrice):
         InvoiceID, ClientName, Paid = RequestList["InvoiceID"], RequestList["ClientName"], RequestList["Paid"]
+        PurchasePrices = {}
         InsufficientQuantityProducts = []
         # For every ordered product
         for Order in Orders:
             # Check if store has sufficient quantity
             Cursor.execute(f"SELECT Quantity FROM Product_Quantity_Table WHERE Product_ID={Order['ProductID']} AND Store_ID={StoreID}")
             AvailableQuantity = Cursor.fetchone()[0]
-            Cursor.execute(f"SELECT Quantity FROM Selling_Items WHERE Invoice_ID={InvoiceID} AND Product_ID={Order['ProductID']}")
-            InvoicePreviousQuantity = Cursor.fetchone()
-            if InvoicePreviousQuantity != None:
-                InvoicePreviousQuantity = InvoicePreviousQuantity[0]
-                if AvailableQuantity < Order["Quantity"] - InvoicePreviousQuantity:
+            Cursor.execute(f"SELECT Purchase_Price, Quantity FROM Selling_Items WHERE Invoice_ID={InvoiceID} AND Product_ID={Order['ProductID']}")
+            if (PreviousData := Cursor.fetchone()) != None:
+                PurchasePrice, InvoicePreviousQuantity = PreviousData
+                PurchasePrices[Order["ProductID"]] = PurchasePrice
+                if AvailableQuantity < Order["Quantity"] - Decimal(InvoicePreviousQuantity):
                     InsufficientQuantityProducts.append(Order["ProductID"])
-                # Return the previous quantity to the store
-                Cursor.execute(f"UPDATE Product_Quantity_Table SET Quantity = Quantity + {InvoicePreviousQuantity} WHERE Product_ID = {Order['ProductID']} AND Store_ID = {StoreID}")
         if InsufficientQuantityProducts:
             return {"StatusCode":ErrorCodes.InsufficientQuantity,"ProductsIDs":InsufficientQuantityProducts} if InsufficientQuantityProducts else ProcessRequest.EditSellingInvoiceHelper(ProjectDBConnector, Cursor, RequestList, StoreID, Orders, TotalPrice, InvoiceID, ClientName, Paid)
         Cursor.execute(f"UPDATE Selling_Invoices SET Client_Name='{ClientName}',Total_Price='{TotalPrice}',Paid='{Paid}',Transferred_To_Account='{TotalPrice - Paid}' WHERE Invoice_ID={InvoiceID};")
+        # Return the previous quantity to the store
+        Cursor.execute(f"SELECT Product_ID, Quantity FROM Selling_Items WHERE Invoice_ID={InvoiceID}")
+        for ProductID, Quantity in Cursor.fetchall():
+            Cursor.execute(f"UPDATE Product_Quantity_Table SET Quantity = Quantity + {Quantity} WHERE Product_ID = {ProductID} AND Store_ID = {StoreID}")
         Cursor.execute(f"DELETE FROM Selling_Items WHERE Invoice_ID='{InvoiceID}';")
         for Order in Orders:
-            Cursor.execute(f"INSERT INTO Selling_Items VALUES ('{InvoiceID}','{Order["ProductID"]}','{Order["Quantity"]}','{Order["UnitPrice"]}');\n")
+            if (PurchasePrice := PurchasePrices.get(Order["ProductID"])) is not None:
+                Cursor.execute(f"INSERT INTO Selling_Items(Invoice_ID, Product_ID, Quantity, Purchase_Price, Unit_Price) VALUES ('{InvoiceID}','{Order["ProductID"]}','{Order["Quantity"]}',{PurchasePrice},'{Order["UnitPrice"]}');\n")
+            else:
+                Cursor.execute(f"INSERT INTO Selling_Items(Invoice_ID, Product_ID, Quantity, Purchase_Price, Unit_Price) VALUES ('{InvoiceID}','{Order["ProductID"]}','{Order["Quantity"]}',(SELECT Purchase_Price FROM Products_Table WHERE Product_ID = '{Order["ProductID"]}'),'{Order["UnitPrice"]}');\n")
+
             Cursor.execute(f"UPDATE Product_Quantity_Table SET Quantity = Quantity - {Order['Quantity']} WHERE "
                            f"Store_ID = {StoreID} AND Product_ID = {Order['ProductID']}")
         ProjectDBConnector.commit()
@@ -309,13 +316,11 @@ class ProcessRequest:
     def EditPurchaseInvoice(ProjectDBConnector, Cursor, RequestList, StoreID, Orders, TotalPrice):
         InvoiceID, SellerName, Paid = RequestList["InvoiceID"], RequestList["SellerName"], RequestList["Paid"]
         
-        # For every ordered product
-        for Order in Orders:
-            Cursor.execute(f"SELECT Quantity FROM Purchase_Items WHERE Invoice_ID={InvoiceID} AND Product_ID={Order['ProductID']}")
-            
-            # Subtract the previous quantity from the store
-            InvoicePreviousQuantity = Cursor.fetchone()[0]
-            Cursor.execute(f"UPDATE Product_Quantity_Table SET Quantity = Quantity - {InvoicePreviousQuantity} WHERE Product_ID = {Order['ProductID']} AND Store_ID = {StoreID}")
+        
+        Cursor.execute(f"SELECT Product_ID, Quantity FROM Purchase_Items WHERE Invoice_ID={InvoiceID}")
+        for ProductID, Quantity in Cursor.fetchall():
+            Cursor.execute(f"UPDATE Product_Quantity_Table SET Quantity = Quantity - {Quantity} WHERE Product_ID = {ProductID} AND Store_ID = {StoreID}")
+        
         Cursor.execute(f"UPDATE Purchase_Invoices SET Seller_Name='{SellerName}',Total_Price='{TotalPrice}',Paid='{Paid}',Subtracted_From_Account='{TotalPrice - Paid}' WHERE Invoice_ID={InvoiceID};")
         Cursor.execute(f"DELETE FROM Purchase_Items WHERE Invoice_ID='{InvoiceID}';")
         for Order in Orders:
