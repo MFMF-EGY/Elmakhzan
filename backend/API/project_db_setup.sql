@@ -10,9 +10,9 @@ create table Products_Table(
     Product_Name varchar(50),
     Trademark varchar(50),
     Manufacture_Country varchar(50),
-    Purchase_Price int,
-    Wholesale_Price int,
-    Retail_Price int,
+    Purchase_Price float,
+    Wholesale_Price float,
+    Retail_Price float,
     Quantity_Unit varchar(20),
     Partial_Quantity_Precision int,
     PRIMARY KEY (Product_ID)
@@ -36,30 +36,34 @@ create table Selling_Invoices(
     Store_ID int,
     Client_Name VARCHAR(50),
     DateTime datetime default CURRENT_TIMESTAMP,
-    Total_Price int,
-    Paid int,
-    Transferred_To_Account int,
+    Total_Price float,
+    Paid float,
+    Transferred_To_Account float,
     PRIMARY KEY (Invoice_ID)
 );
+
 create table Selling_Items(
     Invoice_ID int NOT NULL,
     Product_ID int,
-    Quantity int,
-    Unit_Price int
+    Quantity float,
+    Purchase_Price float,
+    Unit_Price float
 );
+
 create table Refund_Invoices(
     Invoice_ID int NOT NULL AUTO_INCREMENT,
     Store_ID int,
     Client_Name VARCHAR(50),
     DateTime datetime default CURRENT_TIMESTAMP,
-    Total_Price int,
+    Total_Price float,
     PRIMARY KEY (Invoice_ID)
 );
+
 create table Refund_Items(
     Invoice_ID int NOT NULL,
     Product_ID int,
-    Quantity int,
-    Unit_Price int
+    Quantity float,
+    Unit_Price float
 );
 
 create table Purchase_Invoices(
@@ -67,16 +71,16 @@ create table Purchase_Invoices(
     Store_ID int,
     Seller_Name VARCHAR(50),
     DateTime datetime default CURRENT_TIMESTAMP,
-    Total_Price int,
-    Paid int,
-    Subtracted_From_Account int,
+    Total_Price float,
+    Paid float,
+    Subtracted_From_Account float,
     PRIMARY KEY (Invoice_ID)
 );
 create table Purchase_Items(
     Invoice_ID int NOT NULL,
     Product_ID int,
-    Quantity int,
-    Unit_Price int
+    Quantity float,
+    Unit_Price float
 );
 create table Transition_Documents(
     Document_ID int NOT NULL AUTO_INCREMENT,
@@ -88,7 +92,7 @@ create table Transition_Documents(
 create table Transition_Items(
     Document_ID int NOT NULL,
     Product_ID int,
-    Quantity int
+    Quantity float
 );
 create table Products_Quantities_Adjustments(
     Operation_ID int NOT NULL AUTO_INCREMENT,

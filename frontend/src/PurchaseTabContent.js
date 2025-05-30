@@ -307,7 +307,7 @@ function EditInvoiceForm(){
     await axios.get(API_URL, {params: RequestParams})
       .then((response) => {
         if (!response.data.StatusCode){
-          let NewItemsList = Array.from({ length: 12 }, () => ({
+          let ItemsList = Array.from({ length: 12 }, () => ({
             ProductName: "",
             ProductID: "",
             Trademark: "",
@@ -318,7 +318,7 @@ function EditInvoiceForm(){
             Price: ""
           }));
           response.data.Data.Items.forEach((item, index) => {
-            NewItemsList[index] = {
+            ItemsList[index] = {
               ProductName: item.Product_Name,
               ProductID: item.Product_ID,
               Trademark: item.Trademark,
@@ -329,7 +329,7 @@ function EditInvoiceForm(){
               Price: item.Quantity * item.Unit_Price
             }
           });
-          setItemsList(NewItemsList);
+          setItemsList(ItemsList);
           setValidationChecker(Array.from({ length: 12 }, (_, index) => index < response.data.Data.Items.length ? true : undefined));
           setInvoiceInfo({
             InvoiceID: response.data.Data.Invoice_ID,
@@ -337,7 +337,7 @@ function EditInvoiceForm(){
             TotalPrice: response.data.Data.Total_Price,
             Paid: response.data.Data.Paid,
           });
-          fetchExistingQuantites(NewItemsList);
+          fetchExistingQuantites(ItemsList);
         } else {
           console.log(response.data);
           setLoading("error");
@@ -349,13 +349,13 @@ function EditInvoiceForm(){
       })
   }
 
-  const fetchExistingQuantites = async (NewItemsList) => {
+  const fetchExistingQuantites = async (ItemsList) => {
     let RequestParams = {
       RequestType: "GetProductsQuantities",
       ProjectID: ProjectID,
       StoreID: StoreID,
     }
-    let ProductIDs = NewItemsList.map((item) => item.ProductID);
+    let ProductIDs = ItemsList.map((item) => item.ProductID);
     for (let i = 0; i < ProductIDs.length; i++){
       RequestParams[`ProductsIDs[${i}]`] = ProductIDs[i] ? ProductIDs[i] : undefined;
     }

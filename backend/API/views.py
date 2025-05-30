@@ -110,8 +110,12 @@ def isintstr(value):
 
 class ProcessRequest:
     def CreateProject(RequestList):
-        #TODO: Check if project has unique name
         ProjectName, ProjectDescription = RequestList["ProjectName"], RequestList["ProjectDescription"]
+        # Check if project has unique name
+        MainDBCursor.execute(f"SELECT Project_Name FROM Projects_Table WHERE Project_Name = '{RequestList["ProjectName"]}'");
+        if MainDBCursor.fetchone() is not None:
+            return {"StatusCode":ErrorCodes.RedundantValue,"Variable":"ProjectName"}
+        
         MainDBCursor.execute("INSERT INTO Projects_Table(Project_Name,Project_Description) VALUES ('%s','%s')" % (ProjectName,ProjectDescription))
         MainDBCursor.execute("SELECT LAST_INSERT_ID();")
         ProjectID = MainDBCursor.fetchone()[0]
@@ -230,7 +234,7 @@ class ProcessRequest:
                        f"VALUES ('{StoreID}','{ClientName}','{RequiredAmount}','{Paid}',{RequiredAmount - Paid});")
         Cursor.execute("SET @Invoice_ID = LAST_INSERT_ID();")
         for Order in Orders:
-            Cursor.execute(f"INSERT INTO Selling_Items VALUES (@Invoice_ID,'{Order["ProductID"]}','{Order["Quantity"]}','{Order["UnitPrice"]}');\n")
+            Cursor.execute(f"INSERT INTO Selling_Items(Invoice_ID, Product_ID, Quantity, Purchase_Price, Unit_Price) VALUES (@Invoice_ID,'{Order["ProductID"]}','{Order["Quantity"]}',(SELECT Purchase_Price FROM Products_Table WHERE Product_ID = '{Order["ProductID"]}'),'{Order["UnitPrice"]}');\n")
             Cursor.execute(f"UPDATE Product_Quantity_Table SET Quantity = Quantity - {Order['Quantity']} WHERE "
                            f"Store_ID = {StoreID} AND Product_ID = {Order['ProductID']}")
         ProjectDBConnector.commit()
@@ -513,7 +517,7 @@ class ProcessRequest:
         Cursor.execute(f"SELECT * FROM {InvoiceType}_Invoices WHERE Invoice_ID={InvoiceID};")
         if (InvoiceInfo := Cursor.dictfetchone()) == {}:
             return {"StatusCode":ErrorCodes.ValueNotFound,"Variable":"InvoiceID"}
-        Cursor.execute(f"SELECT * FROM {InvoiceType}_Items JOIN Products_Table ON {InvoiceType}_Items.Product_ID = Products_Table.Product_ID WHERE Invoice_ID={InvoiceID};")
+        Cursor.execute(f"SELECT Invoice_ID, Product_Name, Trademark, Manufacture_Country, Quantity_Unit, {InvoiceType}_Items.Product_ID, Quantity, Unit_Price FROM {InvoiceType}_Items JOIN Products_Table ON {InvoiceType}_Items.Product_ID = Products_Table.Product_ID WHERE Invoice_ID={InvoiceID};")
         InvoiceInfo["Items"] = Cursor.dictfetchall()
         return {"StatusCode":0,"Data":InvoiceInfo}
     
